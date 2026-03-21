@@ -1,0 +1,6 @@
+@EU5MapExplorer.Api_HostAddress = http://localhost:5114
+
+GET {{EU5MapExplorer.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
