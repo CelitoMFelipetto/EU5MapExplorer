@@ -233,7 +233,6 @@ var svgOutputPath = Path.Combine(projectDir, "Scripts", "extract-map.svg");
 using (var svgWriter = new StreamWriter(svgOutputPath, append: false, encoding: System.Text.Encoding.UTF8))
 {
     svgWriter.WriteLine($"""<svg xmlns="http://www.w3.org/2000/svg" width="{totalWidth}" height="{totalHeight}" viewBox="0 0 {totalWidth} {totalHeight}">""");
-    svgWriter.WriteLine($"""  <rect width="{totalWidth}" height="{totalHeight}" fill="#1a1a1a"/>""");
     svgWriter.WriteLine($"""  <g transform="translate({pad},{pad})">""");
 
     foreach (var (hex, tracedPaths) in allColourPaths)
