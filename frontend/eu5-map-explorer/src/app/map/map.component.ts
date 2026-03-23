@@ -1,6 +1,16 @@
-import { Component, AfterViewInit, ElementRef, ViewChild, inject, OnDestroy } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import {
+  AfterViewInit,
+  Component,
+  ComponentRef,
+  ElementRef,
+  inject,
+  OnDestroy,
+  ViewChild,
+  ViewContainerRef,
+} from '@angular/core';
 import * as L from 'leaflet';
+import { MapService } from './map.service';
+import { LocationComponent, LocationHoverEvent } from './location/location.component';
 
 @Component({
   selector: 'app-map',
@@ -8,6 +18,7 @@ import * as L from 'leaflet';
   template: `
     <div #mapEl class="map-container"></div>
     <div #tooltipEl class="map-tooltip"></div>
+    <ng-container #locationHost></ng-container>
   `,
   styles: [`
     :host {
@@ -40,118 +51,57 @@ import * as L from 'leaflet';
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
-  @ViewChild('mapEl')      mapEl!:      ElementRef<HTMLDivElement>;
-  @ViewChild('tooltipEl')  tooltipEl!:  ElementRef<HTMLDivElement>;
+  @ViewChild('mapEl')       mapEl!:       ElementRef<HTMLDivElement>;
+  @ViewChild('tooltipEl')   tooltipEl!:   ElementRef<HTMLDivElement>;
+  @ViewChild('locationHost', { read: ViewContainerRef })
+  locationHost!: ViewContainerRef;
 
-  private readonly http = inject(HttpClient);
+  private readonly mapService = inject(MapService);
   private map?: L.Map;
-  private cleanupFns: (() => void)[] = [];
+  private locationRefs: ComponentRef<LocationComponent>[] = [];
 
   ngAfterViewInit(): void {
-    this.http.get('/extract-map.svg', { responseType: 'text' }).subscribe(svgText => {
-      const parser = new DOMParser();
-      const svgEl = parser.parseFromString(svgText, 'image/svg+xml')
-        .documentElement as unknown as SVGSVGElement;
+    this.mapService.getMapData().subscribe(({ svgWidth, svgHeight, locations }) => {
+      // Build a minimal SVG shell — LocationComponents fill it with <path> elements.
+      const ns = 'http://www.w3.org/2000/svg';
+      const svgEl = document.createElementNS(ns, 'svg') as SVGSVGElement;
+      svgEl.setAttribute('width',   String(svgWidth));
+      svgEl.setAttribute('height',  String(svgHeight));
+      svgEl.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
 
-      const w = parseFloat(svgEl.getAttribute('width') ?? '800');
-      const h = parseFloat(svgEl.getAttribute('height') ?? '600');
-
-      // The script outputs a background <rect> for standalone viewing — remove it
-      // so the Leaflet map background shows through.
-      svgEl.querySelector('rect')?.remove();
-
-      // Apply a permanent stroke (slightly darker than each path's fill) to all paths.
-      svgEl.querySelectorAll<SVGPathElement>('path').forEach(path => {
-        const fill = path.getAttribute('fill') ?? '#000000';
-        path.setAttribute('stroke', this.darkenColor(fill, 0.35));
-        path.setAttribute('stroke-width', '1');
-        path.setAttribute('stroke-linejoin', 'round');
-        // Enable pointer events per-path; the SVG container keeps pointer-events:none
-        // (set by Leaflet) so empty-area clicks still pan the map normally.
-        path.style.pointerEvents = 'all';
-      });
+      // The padding translate matches the 2px pad baked into the SVG coordinates.
+      const group = document.createElementNS(ns, 'g') as SVGGElement;
+      group.setAttribute('transform', 'translate(2,2)');
+      svgEl.appendChild(group);
 
       this.map = L.map(this.mapEl.nativeElement, {
         crs: L.CRS.Simple,
         minZoom: -5,
         maxZoom: 5,
-        zoomSnap: 0.25,
+        zoomSnap: 0.25,        
         attributionControl: false,
       });
 
-      // CRS.Simple: lat increases upward, so image top-left → NW = [h, 0],
-      // image bottom-right → SE = [0, w]. Bounds [[SW], [NE]] = [[0,0],[h,w]].
-      const bounds: L.LatLngBoundsExpression = [[0, 0], [h, w]];
+      // CRS.Simple: lat increases upward → SW=[0,0], NE=[h,w].
+      const bounds: L.LatLngBoundsExpression = [[0, 0], [svgHeight, svgWidth]];
       L.svgOverlay(svgEl, bounds).addTo(this.map);
       this.map.fitBounds(bounds);
 
-      this.setupInteractivity(svgEl);
+      // Spawn one LocationComponent per location; each appends its own <g> to
+      // the SVG group and manages its own hover state.
+      for (const location of locations) {
+        const ref = this.locationHost.createComponent(LocationComponent);
+        ref.setInput('map', this.map);
+        ref.setInput('location', location);
+        this.locationRefs.push(ref);
+      }
     });
-  }
-
-  // ── Hover interactivity ────────────────────────────────────────────────────
-
-  private setupInteractivity(svgEl: SVGSVGElement): void {
-    const tooltip = this.tooltipEl.nativeElement;
-    let active: SVGPathElement | null = null;
-
-    // Per-path enter / leave — efficient because path count is bounded.
-    svgEl.querySelectorAll<SVGPathElement>('path').forEach(path => {
-      const fill = path.getAttribute('fill') ?? '';
-
-      const onEnter = () => {
-        if (active && active !== path) this.resetPath(active);
-        active = path;
-        path.style.filter = 'brightness(1.35)';
-        path.style.strokeWidth = '2';
-        tooltip.textContent = fill;
-        tooltip.style.display = 'block';
-      };
-
-      const onLeave = () => {
-        this.resetPath(path);
-        active = null;
-        tooltip.style.display = 'none';
-      };
-
-      path.addEventListener('mouseenter', onEnter);
-      path.addEventListener('mouseleave', onLeave);
-      this.cleanupFns.push(() => {
-        path.removeEventListener('mouseenter', onEnter);
-        path.removeEventListener('mouseleave', onLeave);
-      });
-    });
-
-    // Track cursor on the SVG so the tooltip follows the mouse.
-    // mousemove bubbles from paths through the SVG even when the SVG itself
-    // has pointer-events:none (set by Leaflet).
-    const onMove = (e: MouseEvent) => {
-      tooltip.style.left = `${e.clientX + 14}px`;
-      tooltip.style.top  = `${e.clientY - 36}px`;
-    };
-    svgEl.addEventListener('mousemove', onMove);
-    this.cleanupFns.push(() => svgEl.removeEventListener('mousemove', onMove));
-  }
-
-  private resetPath(path: SVGPathElement): void {
-    path.style.filter      = '';
-    path.style.strokeWidth = '';
-  }
-
-  // ── Colour helpers ─────────────────────────────────────────────────────────
-
-  /** Returns an RGB string that is `amount` (0–1) darker than the given hex colour. */
-  private darkenColor(hex: string, amount = 0.35): string {
-    const r = Math.round(parseInt(hex.slice(1, 3), 16) * (1 - amount));
-    const g = Math.round(parseInt(hex.slice(3, 5), 16) * (1 - amount));
-    const b = Math.round(parseInt(hex.slice(5, 7), 16) * (1 - amount));
-    return `rgb(${r},${g},${b})`;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   ngOnDestroy(): void {
-    this.cleanupFns.forEach(fn => fn());
+    this.locationRefs.forEach(ref => ref.destroy());
     this.map?.remove();
   }
 }

@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Frontend — Angular dev server",
+      "runtimeExecutable": "C:\\Windows\\System32\\cmd.exe",
+      "runtimeArgs": ["/c", "C:\\Program Files\\nodejs\\npm.cmd", "start", "--prefix", "frontend/eu5-map-explorer"],
+      "port": 4200
+    },
+    {
+      "name": "Backend — ASP.NET Core (HTTP)",
+      "runtimeExecutable": "C:\\Windows\\System32\\cmd.exe",
+      "runtimeArgs": ["/c", "C:\\Program Files\\dotnet\\dotnet.exe", "run", "--project", "backend\\EU5MapExplorer.Api", "--launch-profile", "http"],
+      "port": 5114
+    },
+    {
+      "name": "Backend — ASP.NET Core (HTTPS)",
+      "runtimeExecutable": "C:\\Windows\\System32\\cmd.exe",
+      "runtimeArgs": ["/c", "C:\\Program Files\\dotnet\\dotnet.exe", "run", "--project", "backend\\EU5MapExplorer.Api", "--launch-profile", "https"],
+      "port": 7286
+    }
+  ]
+}

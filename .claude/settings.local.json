@@ -7,7 +7,14 @@
       "Bash(dotnet-script --version)",
       "Bash(dotnet tool:*)",
       "Bash(npm install:*)",
-      "Bash(git -C /c/Users/celit/Projects/EU5MapExplorer add .claude/settings.local.json backend/EU5MapExplorer.Api/Scripts/extract-map.csx frontend/eu5-map-explorer/angular.json frontend/eu5-map-explorer/package-lock.json frontend/eu5-map-explorer/package.json frontend/eu5-map-explorer/src/app/app.config.ts frontend/eu5-map-explorer/src/app/app.html frontend/eu5-map-explorer/src/app/app.ts frontend/eu5-map-explorer/src/styles.scss frontend/eu5-map-explorer/public/extract-map.svg frontend/eu5-map-explorer/src/app/map/)"
+      "Bash(git -C /c/Users/celit/Projects/EU5MapExplorer add .claude/settings.local.json backend/EU5MapExplorer.Api/Scripts/extract-map.csx frontend/eu5-map-explorer/angular.json frontend/eu5-map-explorer/package-lock.json frontend/eu5-map-explorer/package.json frontend/eu5-map-explorer/src/app/app.config.ts frontend/eu5-map-explorer/src/app/app.html frontend/eu5-map-explorer/src/app/app.ts frontend/eu5-map-explorer/src/styles.scss frontend/eu5-map-explorer/public/extract-map.svg frontend/eu5-map-explorer/src/app/map/)",
+      "Bash(git -C:*)",
+      "Bash(git config:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(where npm:*)",
+      "Bash(where dotnet:*)",
+      "Read(//c/Program Files/dotnet/**)",
+      "Read(//c/Program Files \\(x86\\)/**)"
     ]
   }
 }
