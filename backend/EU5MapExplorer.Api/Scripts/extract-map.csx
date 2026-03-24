@@ -199,11 +199,14 @@ foreach (var (province, locations) in svealandProvinces)
 
 Console.WriteLine($"\n  → {locationColors.Count} locations with colors.");
 
-// Build province → set of location indices (used later for province path tracing)
+// Build province → set of location indices (used later for province path tracing).
+// Lakes are excluded so the province outline hugs only land pixels.
 var provinceIndexSets = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
 for (int ci = 0; ci < locationColors.Count; ci++)
 {
-    var prov = locationColors[ci].province;
+    var (prov, locName, _, _, _, _) = locationColors[ci];
+    if (templateLookup.TryGetValue(locName, out var tmpl) && tmpl.Topography == "lakes")
+        continue;
     if (!provinceIndexSets.ContainsKey(prov))
         provinceIndexSets[prov] = new HashSet<int>();
     provinceIndexSets[prov].Add(ci);
