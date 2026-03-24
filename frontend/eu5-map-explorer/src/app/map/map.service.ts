@@ -1,7 +1,12 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable } from 'rxjs';
-import { LocationDto, MapDataDto, PathCoordinates, PolygonPath } from './models/location.dto';
+import {
+  ApiMapResponse,
+  LocationDto,
+  MapDataDto,
+  PathCoordinates,
+} from './models/location.dto';
 
 @Injectable({ providedIn: 'root' })
 export class MapService {
@@ -9,58 +14,57 @@ export class MapService {
   public mapHeight = 0;
 
   /**
-   * Fetches the statically-served SVG and parses it into structured map data.
-   * Each unique fill colour in the SVG becomes one LocationDto, collecting all
-   * closed path loops that belong to that colour.
+   * Fetches map data from GET /api/map and converts it into the MapDataDto
+   * shape expected by MapComponent / LocationComponent.
+   *
+   * The API returns pixel-space coordinates [x, y] from the source PNG.
+   * Leaflet's CRS.Simple expects [lat, lng] where lat increases upward, so
+   * each point is remapped to [imageHeight - y, x].
+   * The image dimensions are derived from the max coordinates in the data.
    */
   getMapData(): Observable<MapDataDto> {
-    return this.http.get('/extract-map.svg', { responseType: 'text' }).pipe(
-      map(svgText => this.parseSvg(svgText)),
+    return this.http.get<ApiMapResponse>('/api/map').pipe(
+      map(response => this.mapApiResponse(response)),
     );
   }
 
-  private parseSvg(svgText: string): MapDataDto {
-    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-    const svgEl = doc.documentElement;
+  private mapApiResponse(response: ApiMapResponse): MapDataDto {
+    // ── Pass 1: derive image bounds from max coordinates ─────────────────────
+    let maxX = 0;
+    let maxY = 0;
 
-    const svgWidth  = parseFloat(svgEl.getAttribute('width')  ?? '0');
-    const svgHeight = parseFloat(svgEl.getAttribute('height') ?? '0');
-    this.mapHeight = svgHeight;
+    for (const province of response.provinces) {
+      for (const location of province.locations) {
+        for (const path of location.paths) {
+          for (const [x, y] of path) {
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+    }
 
-    // Group path `d` strings by fill colour.
-    const byColor = new Map<string, string[]>();
-    doc.querySelectorAll('path').forEach(path => {
-      const color = path.getAttribute('fill') ?? '';
-      const d     = path.getAttribute('d')    ?? '';
-      if (!color || !d) return;
-      if (!byColor.has(color)) byColor.set(color, []);
-      byColor.get(color)!.push(d);
-    });
+    const svgWidth  = maxX;
+    const svgHeight = maxY;
+    this.mapHeight  = svgHeight;
 
-    const locations: LocationDto[] = Array.from(byColor.entries()).map(([color, paths]) => ({
-      id: color.replace('#', ''),
-      color,
-      paths: this.svgPathToPolygon(paths),
-    }));
+    // ── Pass 2: build LocationDtos with Leaflet-space coordinates ─────────────
+    const locations: LocationDto[] = [];
 
-    console.log("returning locations", locations);
+    for (const province of response.provinces) {
+      for (const loc of province.locations) {
+        const paths = loc.paths.map(path =>
+          path.map(([x, y]) => [svgHeight - y, x] as PathCoordinates),
+        );
+
+        locations.push({
+          id:    loc.name,
+          color: `#${loc.color}`,
+          paths,
+        });
+      }
+    }
 
     return { svgWidth, svgHeight, locations };
-  }
-
-  private svgPathToPolygon(original: string[]): PolygonPath {
-    // For now we are ignoring evenodd property
-    const result:PolygonPath = original.reduce((polygons, path) => {
-      const subpaths = path.replaceAll(' ', '').split('ZM');
-      subpaths.forEach((subpath) => {
-        const coordinates = subpath.replaceAll('M', '').replaceAll('Z','').split('L');
-        polygons.push(coordinates.map((coordinate) => {
-          const [x, y] = coordinate.split(',');
-          return [this.mapHeight - Number(y), Number(x)] as PathCoordinates;
-        }));
-      });
-      return polygons;
-    }, [] as PathCoordinates[][]);
-    return result;
   }
 }

@@ -1,13 +1,15 @@
+// ── Types consumed by LocationComponent / MapComponent ───────────────────────
+
 export type PathCoordinates = [number, number];
 
 export type PolygonPath = PathCoordinates[] | PathCoordinates[][] | PathCoordinates[][][];
 
 export interface LocationDto {
-  /** Hex colour without '#', used as a unique identifier (e.g. 'dda910'). */
+  /** Location name (e.g. 'stockholm'). */
   id: string;
-  /** Full hex colour string (e.g. '#dda910'). */
+  /** Full hex colour string with '#' prefix (e.g. '#dda910'). */
   color: string;
-  /** SVG path `d` attribute values — one entry per closed loop in this location. */
+  /** Leaflet-ready polygon paths — coordinates already converted to [lat, lng]. */
   paths: PolygonPath;
 }
 
@@ -15,4 +17,28 @@ export interface MapDataDto {
   svgWidth: number;
   svgHeight: number;
   locations: LocationDto[];
+}
+
+// ── Raw shapes returned by GET /api/map ───────────────────────────────────────
+
+export interface ApiLocationDto {
+  /** Location name as defined in definitions.txt (e.g. 'stockholm'). */
+  name: string;
+  /** 6-char hex colour without '#' (e.g. 'dda910'). */
+  color: string;
+  /**
+   * Boundary polygon paths in raw image pixel space.
+   * paths[pathIndex][pointIndex] = [x, y]
+   */
+  paths: number[][][];
+}
+
+export interface ApiProvinceDto {
+  name: string;
+  locations: ApiLocationDto[];
+}
+
+export interface ApiMapResponse {
+  area: string;
+  provinces: ApiProvinceDto[];
 }

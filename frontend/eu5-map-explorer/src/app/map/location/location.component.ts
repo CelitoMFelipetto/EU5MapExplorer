@@ -8,6 +8,17 @@ export interface LocationHoverEvent {
   y: number;
 }
 
+const regularStyle: L.PolylineOptions = {
+  color: 'gray',
+  weight: 2,
+  fillOpacity: 0.5,
+}
+
+const highlightStyle: L.PolylineOptions = {
+  weight: 3,
+  fillOpacity: 0.7,
+}
+
 /**
  * Headless component — no template. Each instance manages a single L.Polygon 
  * element appended to the Leaflet map, containing all closed-loop paths for
@@ -28,7 +39,7 @@ export class LocationComponent implements OnChanges {
 
   ngOnChanges(): void {
     // Both inputs must be present, and we only render once.
-    if (!this.location || !this.map ) return;
+    if (!this.location || !this.map) return;
     this.render();
   }
 
@@ -36,30 +47,28 @@ export class LocationComponent implements OnChanges {
 
   private render(): void {
     // creates the location
-    this.polygon = L.polygon(this.location.paths, {color: 'gray', fillColor: this.location.color});
+    this.polygon = L.polygon(this.location.paths, { ...regularStyle, fillColor: this.location.color });
     // adds interactivity
     this.polygon.on({
       mouseover: () => this.highlight(),
       mouseout: () => this.resetHighlight(),
     });
+    this.polygon.bindTooltip(this.location.id);
     // adds location to the map
     this.polygon.addTo(this.map);
   }
 
   private highlight(): void {
     this.polygon?.setStyle({
-      fillOpacity: 0.7,
+      ...highlightStyle,
       color: this.location.color,
-      weight: 5,
     });
     this.polygon?.bringToFront();
   }
 
   private resetHighlight() {
     this.polygon?.setStyle({
-      fillOpacity: 0.5,
-      color: 'gray',
-      weight: 3,
+      ...regularStyle,
     });
   }
 }

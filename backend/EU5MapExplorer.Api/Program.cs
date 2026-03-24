@@ -23,6 +23,20 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.MapGet("/api/map", () =>
+{
+    var repoRoot  = GetRepoRoot(app.Environment.ContentRootPath);
+    var jsonPath  = Path.Combine(repoRoot, "backend", "EU5MapExplorer.Api", "Scripts", "svealand_area.json");
+
+    if (!File.Exists(jsonPath))
+        return Results.NotFound(new { error = "svealand_area.json not found. Run the extract-map script first." });
+
+    var json = File.ReadAllText(jsonPath);
+    return Results.Content(json, "application/json");
+})
+.WithName("GetMap")
+.WithOpenApi();
+
 app.MapGet("/api/saves/header", (string? path) =>
 {
     var repoRoot = GetRepoRoot(app.Environment.ContentRootPath);

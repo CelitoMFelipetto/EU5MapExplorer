@@ -14,7 +14,26 @@
       "Bash(where npm:*)",
       "Bash(where dotnet:*)",
       "Read(//c/Program Files/dotnet/**)",
-      "Read(//c/Program Files \\(x86\\)/**)"
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pdx.tools)",
+      "WebFetch(domain:www.nuget.org)",
+      "Bash(dotnet script:*)",
+      "Bash(cmd.exe /c \"dotnet script Scripts/extract-map.csx\")",
+      "Bash(dotnet-script Scripts/extract-map.csx)",
+      "Bash(powershell.exe -Command \"dotnet-script ''C:\\\\Users\\\\celit\\\\Projects\\\\EU5MapExplorer\\\\backend\\\\EU5MapExplorer.Api\\\\Scripts\\\\extract-map.csx''\")",
+      "Bash(powershell.exe -Command \"dotnet --list-sdks\")",
+      "Bash(cmd.exe /c \"dotnet --list-sdks 2>&1\")",
+      "Bash(ls \"C:\\\\Program Files \\(x86\\)\\\\dotnet\\\\sdk\")",
+      "WebFetch(domain:api.nuget.org)",
+      "WebFetch(domain:nugetmusthaves.com)",
+      "Bash(cmd.exe /c \"winget install Microsoft.DotNet.SDK.10 --accept-source-agreements --accept-package-agreements 2>&1\")",
+      "Bash(cmd.exe /c \"dotnet-script --help 2>&1\")",
+      "Read(//c/Users/celit/.dotnet/tools/**)",
+      "Read(//c/Users/celit/AppData/Local/Microsoft/dotnet/**)",
+      "Bash(\"/c/Users/celit/.dotnet/tools/dotnet-script.exe\" --help)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cmd.exe /c \"gh pr create --title \"\"feat: dynamic PDXScript map parsing for svealand_area\"\" --body \"\"## Summary\\\\n\\\\n- Adds **Tamar.Clausewitz 0.5.1** as a NuGet dependency to extract-map.csx, replacing the inline parser — requires the script to run under .NET 10 \\(dotnet-script reinstalled accordingly\\)\\\\n- Parses definitions.txt using the Clausewitz DOM API \\(.Clauses for nested blocks, .Tokens for bare location identifiers\\) to extract the full svealand_area province → location hierarchy\\\\n- Parses all named_locations/*.txt files using .Bindings to build a dynamic location → RGB hex colour lookup, replacing the previous hardcoded colour array\\\\n- Switches the image pixel scan from a linear colour search to an O\\(1\\) Dictionary lookup\\\\n- Replaces the SVG output with a structured svealand_area.json containing the full hierarchy: area → provinces → locations → { name, color, paths[] }\\\\n\\\\n## Test plan\\\\n\\\\n- [ ] Run dotnet-script Scripts/extract-map.csx from the EU5MapExplorer.Api directory\\\\n- [ ] Verify Step 1 console output lists 7 provinces with correct location counts\\\\n- [ ] Verify Step 2 loads colour entries without errors\\\\n- [ ] Verify Scripts/svealand_area.json is produced with all provinces, locations, colours and traced paths populated\\\\n\\\\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\"\" 2>&1\")"
     ]
   }
 }
