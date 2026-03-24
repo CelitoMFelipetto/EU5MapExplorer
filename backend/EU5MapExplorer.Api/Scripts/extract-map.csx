@@ -1,9 +1,11 @@
 #r "nuget: SixLabors.ImageSharp, 3.1.5"
+#r "nuget: Tamar.Clausewitz, 0.5.1"
 #nullable enable
 
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System.Text.Json;
+using Tamar.Clausewitz;
 
 // ── Find project dir by walking up from CWD ──────────────────────────────────
 
@@ -40,38 +42,119 @@ if (dataPath == null)
     return;
 }
 
-// ── Define target colours ─────────────────────────────────────────────────────
+// ── Step 1: Parse definitions.txt → svealand_area provinces + locations ───────
 
-var colours = new (byte R, byte G, byte B, string Hex)[]
+Console.WriteLine("Step 1: Parsing definitions.txt...");
+
+var definitionsPath = Path.Combine(dataPath, "in_game", "map_data", "definitions.txt");
+if (!File.Exists(definitionsPath))
 {
-    (0xDD, 0xA9, 0x10, "#dda910"),
-    (0x54, 0x06, 0x01, "#540601"),
-    (0xA8, 0x2D, 0xB1, "#a82db1"),
-    (0x54, 0x15, 0x83, "#541583"),
-    (0x00, 0x1E, 0x05, "#001e05"),
-    (0xA8, 0x39, 0x89, "#a83989"),
-    (0x00, 0x3C, 0x0A, "#003c0a"),
-};
+    Console.Error.WriteLine($"Error: File not found: {definitionsPath}");
+    return;
+}
 
-// ── Load image ───────────────────────────────────────────────────────────────
+var definitionsRoot = Interpreter.InterpretText(File.ReadAllText(definitionsPath));
+var svealandClause  = definitionsRoot.FindClauseDepthFirst("svealand_area");
+if (svealandClause == null)
+{
+    Console.Error.WriteLine("Error: svealand_area not found in definitions.txt.");
+    return;
+}
+
+// provinceName → ordered list of location names
+// Province blocks contain bare identifiers: uppland_province = { stockholm norrtalje ... }
+// Tamar.Clausewitz: sub-blocks are in .Clauses, bare scalar tokens are in .Tokens
+var svealandProvinces = new Dictionary<string, List<string>>();
+foreach (var provinceClause in svealandClause.Clauses)
+{
+    var provinceName = provinceClause.Name;
+    if (string.IsNullOrEmpty(provinceName)) continue;
+
+    var locations = provinceClause.Tokens
+        .Select(t => t.Value)
+        .Where(v => !string.IsNullOrEmpty(v))
+        .ToList();
+
+    svealandProvinces[provinceName] = locations!;
+}
+
+Console.WriteLine($"  → {svealandProvinces.Count} provinces:");
+foreach (var (prov, locs) in svealandProvinces)
+    Console.WriteLine($"    {prov}: {locs.Count} locations");
+
+// ── Step 2: Parse named_locations/*.txt → location name → RGB hex ─────────────
+
+Console.WriteLine("\nStep 2: Parsing named_locations...");
+
+var namedLocationsDir = Path.Combine(dataPath, "in_game", "map_data", "named_locations");
+if (!Directory.Exists(namedLocationsDir))
+{
+    Console.Error.WriteLine($"Error: Directory not found: {namedLocationsDir}");
+    return;
+}
+
+// location_name → normalized 6-char hex string (leading zeros restored)
+var colorLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+foreach (var file in Directory.GetFiles(namedLocationsDir, "*.txt").OrderBy(f => f))
+{
+    var locRoot = Interpreter.InterpretText(File.ReadAllText(file));
+    // Each line is a Binding: stockholm = dda910
+    foreach (var binding in locRoot.Bindings)
+    {
+        if (!string.IsNullOrEmpty(binding.Name) && !string.IsNullOrEmpty(binding.Value))
+            colorLookup[binding.Name] = binding.Value.PadLeft(6, '0');
+    }
+}
+
+Console.WriteLine($"  → {colorLookup.Count} color entries loaded.");
+
+// ── Step 3: Match svealand locations to their colors ─────────────────────────
+
+// Flat list keeping province context: (province, location, r, g, b, hex)
+var locationColors = new List<(string province, string location, byte r, byte g, byte b, string hex)>();
+
+foreach (var (province, locations) in svealandProvinces)
+{
+    foreach (var loc in locations)
+    {
+        if (!colorLookup.TryGetValue(loc, out var hex))
+        {
+            Console.WriteLine($"  [WARN] No color found for location '{loc}' — skipping.");
+            continue;
+        }
+        var r = Convert.ToByte(hex.Substring(0, 2), 16);
+        var g = Convert.ToByte(hex.Substring(2, 2), 16);
+        var b = Convert.ToByte(hex.Substring(4, 2), 16);
+        locationColors.Add((province, loc, r, g, b, hex));
+    }
+}
+
+Console.WriteLine($"\n  → {locationColors.Count} locations with colors.");
+
+// ── Step 4: Load locations.png and map every pixel to a location index ────────
+
+Console.WriteLine("\nStep 4: Scanning image...");
 
 var imagePath = Path.Combine(dataPath, "in_game", "map_data", "locations.png");
-
 if (!File.Exists(imagePath))
 {
     Console.Error.WriteLine($"Error: File not found: {imagePath}");
     return;
 }
 
-Console.WriteLine($"Reading: {imagePath}");
+Console.WriteLine($"  Reading: {imagePath}");
+var image  = Image.Load<Rgba32>(imagePath);
+int width  = image.Width;
+int height = image.Height;
+Console.WriteLine($"  Size: {width} x {height} px");
 
-var image = Image.Load<Rgba32>(imagePath);
-int width = image.Width, height = image.Height;
-Console.WriteLine($"Size: {width} x {height} px");
+// Build fast (R,G,B) → location index dictionary
+var colorIndex = new Dictionary<(byte, byte, byte), int>();
+for (int i = 0; i < locationColors.Count; i++)
+    colorIndex.TryAdd((locationColors[i].r, locationColors[i].g, locationColors[i].b), i);
 
-// ── Pass 1: single scan — map every pixel to a colour index (or -1) ──────────
-// One pass over all pixels; each matched pixel records which colour it belongs to.
-
+// Single-pass scan
 var colorMap = new int[width, height];
 for (int y = 0; y < height; y++)
     for (int x = 0; x < width; x++)
@@ -85,47 +168,20 @@ image.ProcessPixelRows(accessor =>
         for (int x = 0; x < row.Length; x++)
         {
             ref var px = ref row[x];
-            for (int ci = 0; ci < colours.Length; ci++)
-            {
-                if (px.R != colours[ci].R || px.G != colours[ci].G || px.B != colours[ci].B) continue;
-                colorMap[x, y] = ci;
-                break;
-            }
+            if (colorIndex.TryGetValue((px.R, px.G, px.B), out var idx))
+                colorMap[x, y] = idx;
         }
     }
 });
 
 image.Dispose();
+Console.WriteLine("  Scan complete.");
 
-// ── Compute global bounding box across all matched pixels ─────────────────────
+// ── Step 5: Trace boundary paths for every location ───────────────────────────
 
-int globalMinX = int.MaxValue, globalMaxX = int.MinValue;
-int globalMinY = int.MaxValue, globalMaxY = int.MinValue;
+Console.WriteLine("\nStep 5: Tracing paths...");
 
-for (int y = 0; y < height; y++)
-{
-    for (int x = 0; x < width; x++)
-    {
-        if (colorMap[x, y] < 0) continue;
-        if (x < globalMinX) globalMinX = x;
-        if (x > globalMaxX) globalMaxX = x;
-        if (y < globalMinY) globalMinY = y;
-        if (y > globalMaxY) globalMaxY = y;
-    }
-}
-
-if (globalMinX == int.MaxValue)
-{
-    Console.Error.WriteLine("Error: None of the target colours were found in the image.");
-    return;
-}
-
-int svgWidth  = globalMaxX - globalMinX + 1;
-int svgHeight = globalMaxY - globalMinY + 1;
-Console.WriteLine($"Global bounding box: {svgWidth} x {svgHeight} px");
-
-// ── Right-hand-rule turn order (shared across all colours) ────────────────────
-
+// Right-hand-rule turn order (clockwise winding)
 var cwOrder = new Dictionary<(int, int), (int, int)[]>
 {
     [(0, -1)] = new[] { (1, 0), (0, -1), (-1, 0) },  // arrived N → try E, N, W
@@ -134,138 +190,127 @@ var cwOrder = new Dictionary<(int, int), (int, int)[]>
     [(-1, 0)] = new[] { (0,-1), (-1, 0), (0,  1) },  // arrived W → try N, W, S
 };
 
-// ── Passes 2-4: per-colour — edge graph → closed path tracing ────────────────
+// provinceMap: province name → list of location JSON objects
+var provinceMap = new Dictionary<string, List<object>>();
 
-var allColourPaths = new List<(string hex, List<List<(int, int)>> paths)>();
-
-for (int ci = 0; ci < colours.Length; ci++)
+for (int ci = 0; ci < locationColors.Count; ci++)
 {
-    var hex = colours[ci].Hex;
-    Console.WriteLine($"Processing {hex}...");
+    var (province, locName, _, _, _, hex) = locationColors[ci];
+    Console.WriteLine($"  Tracing {locName} ({hex})...");
 
-    // Build boundary edge adjacency graph for this colour.
-    // A boundary edge exists wherever this colour pixel meets a different/absent pixel.
+    // Build boundary edge graph
     var adj = new Dictionary<(int, int), HashSet<(int, int)>>();
-    Action<(int, int), (int, int)> link = (a, b) =>
+    void Link((int, int) a, (int, int) b)
     {
         if (!adj.ContainsKey(a)) adj[a] = new HashSet<(int, int)>();
         if (!adj.ContainsKey(b)) adj[b] = new HashSet<(int, int)>();
         adj[a].Add(b);
         adj[b].Add(a);
-    };
+    }
 
     for (int py = 0; py < height; py++)
-    {
         for (int px = 0; px < width; px++)
         {
             if (colorMap[px, py] != ci) continue;
-            if (py == 0          || colorMap[px, py - 1] != ci) link((px, py),     (px + 1, py));
-            if (py == height - 1 || colorMap[px, py + 1] != ci) link((px, py + 1), (px + 1, py + 1));
-            if (px == 0          || colorMap[px - 1, py] != ci) link((px, py),     (px, py + 1));
-            if (px == width  - 1 || colorMap[px + 1, py] != ci) link((px + 1, py), (px + 1, py + 1));
+            if (py == 0          || colorMap[px, py - 1] != ci) Link((px, py),     (px + 1, py));
+            if (py == height - 1 || colorMap[px, py + 1] != ci) Link((px, py + 1), (px + 1, py + 1));
+            if (px == 0          || colorMap[px - 1, py] != ci) Link((px, py),     (px, py + 1));
+            if (px == width  - 1 || colorMap[px + 1, py] != ci) Link((px + 1, py), (px + 1, py + 1));
         }
+
+    // Walk the edge graph tracing closed polygons
+    var remaining = adj.ToDictionary(kvp => kvp.Key, kvp => new HashSet<(int, int)>(kvp.Value));
+    void UseEdge((int, int) a, (int, int) b)
+    {
+        if (remaining.TryGetValue(a, out var sa)) { sa.Remove(b); if (sa.Count == 0) remaining.Remove(a); }
+        if (remaining.TryGetValue(b, out var sb)) { sb.Remove(a); if (sb.Count == 0) remaining.Remove(b); }
     }
 
-    // Trace closed paths by walking the graph with the right-hand rule.
-    var remaining = adj.ToDictionary(kvp => kvp.Key, kvp => new HashSet<(int, int)>(kvp.Value));
-    Action<(int, int), (int, int)> useEdge = (a, b) =>
-    {
-        if (remaining.ContainsKey(a)) { remaining[a].Remove(b); if (remaining[a].Count == 0) remaining.Remove(a); }
-        if (remaining.ContainsKey(b)) { remaining[b].Remove(a); if (remaining[b].Count == 0) remaining.Remove(b); }
-    };
-
-    var tracedPaths = new List<List<(int, int)>>();
+    var tracedPaths = new List<int[][]>();
 
     while (remaining.Count > 0)
     {
-        var start = remaining.Keys.OrderBy(v => v.Item2).ThenBy(v => v.Item1).First();
+        var start     = remaining.Keys.OrderBy(v => v.Item2).ThenBy(v => v.Item1).First();
         var firstNext = remaining[start].OrderBy(v => v.Item2).ThenBy(v => v.Item1).First();
-        useEdge(start, firstNext);
+        UseEdge(start, firstNext);
 
-        var path = new List<(int, int)> { start };
+        var pts  = new List<(int, int)> { start };
         var prev = start;
         var curr = firstNext;
 
         while (curr != start)
         {
-            path.Add(curr);
+            pts.Add(curr);
             if (!remaining.ContainsKey(curr)) break;
 
             var arrDir = (curr.Item1 - prev.Item1, curr.Item2 - prev.Item2);
-            (int, int) next = default;
-            bool found = false;
+            (int, int) next  = default;
+            bool       found = false;
 
             foreach (var tryDir in cwOrder[arrDir])
             {
-                var candidate = (curr.Item1 + tryDir.Item1, curr.Item2 + tryDir.Item2);
-                if (remaining.ContainsKey(curr) && remaining[curr].Contains(candidate))
+                var cand = (curr.Item1 + tryDir.Item1, curr.Item2 + tryDir.Item2);
+                if (remaining.TryGetValue(curr, out var neighbors) && neighbors.Contains(cand))
                 {
-                    next = candidate;
+                    next  = cand;
                     found = true;
                     break;
                 }
             }
 
             if (!found) break;
-
-            useEdge(curr, next);
+            UseEdge(curr, next);
             prev = curr;
             curr = next;
         }
 
-        tracedPaths.Add(path);
-    }
-
-    Console.WriteLine($"  → {tracedPaths.Count} path(s) traced.");
-    allColourPaths.Add((hex, tracedPaths));
-}
-
-// ── Write SVG ─────────────────────────────────────────────────────────────────
-// Each colour's closed loops are filled with that colour.
-// Coordinates are offset to the global bounding box origin, plus padding.
-
-const int pad = 2;
-int totalWidth  = svgWidth  + pad * 2;
-int totalHeight = svgHeight + pad * 2;
-
-var svgOutputPath = Path.Combine(projectDir, "Scripts", "extract-map.svg");
-
-using (var svgWriter = new StreamWriter(svgOutputPath, append: false, encoding: System.Text.Encoding.UTF8))
-{
-    svgWriter.WriteLine($"""<svg xmlns="http://www.w3.org/2000/svg" width="{totalWidth}" height="{totalHeight}" viewBox="0 0 {totalWidth} {totalHeight}">""");
-    svgWriter.WriteLine($"""  <g transform="translate({pad},{pad})">""");
-
-    foreach (var (hex, tracedPaths) in allColourPaths)
-    {
-        svgWriter.WriteLine($"    <!-- {hex} -->");
-
-        foreach (var path in tracedPaths)
+        // Strip collinear intermediate points to reduce output size
+        var simplified = new List<int[]>();
+        for (int i = 0; i < pts.Count; i++)
         {
-            if (path.Count < 2) continue;
-
-            // Strip collinear intermediate points, then emit as a filled path.
-            var sb = new System.Text.StringBuilder();
-            int lx = path[0].Item1, ly = path[0].Item2;
-            sb.Append($"M {lx - globalMinX},{ly - globalMinY}");
-            for (int i = 1; i < path.Count; i++)
+            if (i == 0 || i == pts.Count - 1)
             {
-                int cx = path[i].Item1, cy = path[i].Item2;
-                if (i < path.Count - 1)
-                {
-                    int nx = path[i + 1].Item1, ny = path[i + 1].Item2;
-                    if ((cx - lx) * (ny - cy) - (cy - ly) * (nx - cx) == 0) continue;
-                }
-                sb.Append($" L {cx - globalMinX},{cy - globalMinY}");
-                lx = cx; ly = cy;
+                simplified.Add(new[] { pts[i].Item1, pts[i].Item2 });
+                continue;
             }
-            sb.Append(" Z");
-            svgWriter.WriteLine($"""    <path d="{sb}" fill="{hex}"/>""");
+            var (ax, ay) = pts[i - 1];
+            var (bx, by) = pts[i];
+            var (cx, cy) = pts[i + 1];
+            if ((bx - ax) * (cy - by) - (by - ay) * (cx - bx) != 0)
+                simplified.Add(new[] { bx, by });
         }
+
+        tracedPaths.Add(simplified.ToArray());
     }
 
-    svgWriter.WriteLine("  </g>");
-    svgWriter.WriteLine("</svg>");
+    Console.WriteLine($"    → {tracedPaths.Count} path(s)");
+
+    if (!provinceMap.ContainsKey(province))
+        provinceMap[province] = new List<object>();
+
+    provinceMap[province].Add(new
+    {
+        name  = locName,
+        color = hex,
+        paths = tracedPaths
+    });
 }
 
-Console.WriteLine();
-Console.WriteLine($"SVG saved to: {svgOutputPath}");
+// ── Step 6: Write JSON ────────────────────────────────────────────────────────
+
+Console.WriteLine("\nStep 6: Writing JSON...");
+
+var output = new
+{
+    area      = "svealand_area",
+    provinces = svealandProvinces.Keys.Select(pName => new
+    {
+        name      = pName,
+        locations = provinceMap.TryGetValue(pName, out var locs) ? locs : new List<object>()
+    }).ToList()
+};
+
+var jsonOutputPath = Path.Combine(projectDir, "Scripts", "svealand_area.json");
+File.WriteAllText(jsonOutputPath, JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
+
+Console.WriteLine($"\nDone. JSON saved to: {jsonOutputPath}");
