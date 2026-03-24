@@ -5,6 +5,7 @@ import {
   ElementRef,
   inject,
   OnDestroy,
+  signal,
   ViewChild,
   ViewContainerRef,
 } from '@angular/core';
@@ -18,6 +19,7 @@ import { LocationComponent, LocationHoverEvent } from './location/location.compo
   template: `
     <div #mapEl class="map-container"></div>
     <div #tooltipEl class="map-tooltip"></div>
+    <div class="zoom-badge">{{ zoomLevel() }}</div>
     <ng-container #locationHost></ng-container>
   `,
   styles: [`
@@ -48,6 +50,27 @@ import { LocationComponent, LocationHoverEvent } from './location/location.compo
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
       z-index: 9999;
     }
+
+    .zoom-badge {
+      position: absolute;
+      /* sits directly below Leaflet's two zoom buttons (~58 px tall) + 10 px offset */
+      top: 74px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.9);
+      border: 2px solid rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      padding: 0 6px;
+      font-family: monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: #333;
+      line-height: 26px;
+      min-width: 26px;
+      text-align: center;
+      pointer-events: none;
+      box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
+    }
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
@@ -59,6 +82,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly mapService = inject(MapService);
   private map?: L.Map;
   private locationRefs: ComponentRef<LocationComponent>[] = [];
+
+  readonly zoomLevel = signal('—');
 
   ngAfterViewInit(): void {
     this.mapService.getMapData().subscribe(({ svgWidth, svgHeight, locations }) => {
@@ -78,14 +103,19 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         crs: L.CRS.Simple,
         minZoom: -5,
         maxZoom: 5,
-        zoomSnap: 0.25,        
+        zoomSnap: 0.25,
         attributionControl: false,
+      });
+
+      this.map.on('zoomend', () => {
+        this.zoomLevel.set(this.map!.getZoom().toFixed(2));
       });
 
       // CRS.Simple: lat increases upward → SW=[0,0], NE=[h,w].
       const bounds: L.LatLngBoundsExpression = [[0, 0], [svgHeight, svgWidth]];
       L.svgOverlay(svgEl, bounds).addTo(this.map);
       this.map.fitBounds(bounds);
+      this.zoomLevel.set(this.map.getZoom().toFixed(2));
 
       // Spawn one LocationComponent per location; each appends its own <g> to
       // the SVG group and manages its own hover state.
