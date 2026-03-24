@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map, Observable } from 'rxjs';
+import * as L from 'leaflet';
 import {
   ApiMapResponse,
   LocationDto,
@@ -13,6 +14,9 @@ import {
 export class MapService {
   private readonly http = inject(HttpClient);
   public mapHeight = 0;
+
+  /** The active Leaflet map instance. Set by MapComponent, cleared on destroy. */
+  map: L.Map | null = null;
 
   /**
    * Fetches map data from GET /api/map and converts it into the MapDataDto

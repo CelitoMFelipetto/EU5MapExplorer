@@ -4,6 +4,7 @@ import {
   ComponentRef,
   ElementRef,
   inject,
+  Injector,
   OnDestroy,
   signal,
   ViewChild,
@@ -13,6 +14,7 @@ import * as L from 'leaflet';
 import { MapService } from './map.service';
 import { ProvinceComponent } from './province/province.component';
 import { MAP_PANES } from './map-panes';
+import { PROVINCE_DTO } from './map-tokens';
 
 @Component({
   selector: 'app-map',
@@ -108,6 +110,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         attributionControl: false,
       });
 
+      // Publish the map instance so child components can inject it via MapService.
+      this.mapService.map = this.map;
+
       this.map.on('zoomend', () => {
         this.zoomLevel.set(this.map!.getZoom().toFixed(2));
       });
@@ -124,12 +129,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.map.fitBounds(bounds);
       this.zoomLevel.set(this.map.getZoom().toFixed(2));
 
-      // Spawn one ProvinceComponent per province; each manages its own
-      // boundary outline and spawns LocationComponent children.
+      // Spawn one ProvinceComponent per province, providing the DTO directly
+      // into the component's injector so it can be resolved in the constructor.
       for (const province of provinces) {
-        const ref = this.locationHost.createComponent(ProvinceComponent);
-        ref.setInput('map', this.map);
-        ref.setInput('province', province);
+        const injector = Injector.create({
+          providers: [{ provide: PROVINCE_DTO, useValue: province }],
+          parent: this.locationHost.injector,
+        });
+        const ref = this.locationHost.createComponent(ProvinceComponent, { injector });
         this.provinceRefs.push(ref);
       }
     });
@@ -140,5 +147,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.provinceRefs.forEach(ref => ref.destroy());
     this.map?.remove();
+    this.mapService.map = null;
   }
 }
