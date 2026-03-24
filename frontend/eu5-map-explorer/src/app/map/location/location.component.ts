@@ -1,17 +1,19 @@
-import { Component, inject, OnDestroy } from '@angular/core';
+import { Component, effect, inject, OnDestroy } from '@angular/core';
 import * as L from 'leaflet';
 import { LocationDto } from '../models/location.dto';
 import { MAP_PANES } from '../map-panes';
 import { LOCATION_DTO } from '../map-tokens';
+import { MapHighlightService } from '../map-highlight.service';
 import { MapService } from '../map.service';
 
 const regularStyle: L.PolylineOptions = {
-  color: 'gray',
-  weight: 2,
+  color: '#AAA',
+  weight: 1,
   fillOpacity: 0.5,
 };
 
 const highlightStyle: L.PolylineOptions = {
+  color: '#fff43d',
   weight: 3,
   fillOpacity: 0.7,
 };
@@ -33,8 +35,9 @@ export class LocationComponent implements OnDestroy {
   private readonly location: LocationDto;
 
   constructor() {
-    this.location    = inject(LOCATION_DTO);
-    const mapService = inject(MapService);
+    this.location      = inject(LOCATION_DTO);
+    const mapService   = inject(MapService);
+    const mapHighlight = inject(MapHighlightService);
 
     this.polygon = L.polygon(this.location.paths, {
       ...regularStyle,
@@ -43,11 +46,28 @@ export class LocationComponent implements OnDestroy {
     });
 
     if (this.location.topography !== 'lakes') {
+      const locationId = this.location.id;
+      const map        = mapService.map!;
+      const tooltip    = L.tooltip({ sticky: false }).setContent(locationId);
+
       this.polygon.on({
-        mouseover: () => this.highlight(),
-        mouseout:  () => this.resetHighlight(),
+        mouseover: () => mapHighlight.highlight(locationId),
+        mouseout:  () => mapHighlight.clear(),
       });
-      this.polygon.bindTooltip(this.location.id);
+
+      // Both highlight style and tooltip are driven solely by the signal.
+      // If mouseout is ever missed, the next mouseover on any location changes
+      // the signal, this effect re-runs, and the stale tooltip is removed.
+      effect(() => {
+        if (mapHighlight.highlightedLocationId() === locationId) {
+          this.polygon.setStyle({ ...highlightStyle });
+          this.polygon.bringToFront();
+          tooltip.setLatLng(this.polygon.getBounds().getCenter()).addTo(map);
+        } else {
+          this.polygon.setStyle({ ...regularStyle });
+          tooltip.remove();
+        }
+      });
     }
 
     this.polygon.addTo(mapService.map!);
@@ -59,14 +79,5 @@ export class LocationComponent implements OnDestroy {
 
   private fillColor(): string {
     return this.location.topography === 'lakes' ? lakeColor : this.location.color;
-  }
-
-  private highlight(): void {
-    this.polygon.setStyle({ ...highlightStyle, color: this.fillColor() });
-    this.polygon.bringToFront();
-  }
-
-  private resetHighlight(): void {
-    this.polygon.setStyle({ ...regularStyle });
   }
 }
