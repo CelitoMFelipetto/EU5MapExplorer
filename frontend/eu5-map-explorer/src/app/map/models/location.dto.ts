@@ -1,4 +1,4 @@
-// ── Types consumed by LocationComponent / MapComponent ───────────────────────
+// ── Types consumed by LocationComponent / ProvinceComponent / MapComponent ────
 
 export type PathCoordinates = [number, number];
 
@@ -16,12 +16,23 @@ export interface LocationDto {
   raw_material: string | null;
   /** Leaflet-ready polygon paths — coordinates already converted to [lat, lng]. */
   paths: PolygonPath;
+  /** The province this location belongs to. */
+  province: ProvinceDto;
+}
+
+export interface ProvinceDto {
+  /** Province name (e.g. 'uppland_province'). */
+  id: string;
+  /** Leaflet-ready province boundary paths — coordinates already converted to [lat, lng]. */
+  paths: PolygonPath;
+  /** All locations that belong to this province. */
+  locations: LocationDto[];
 }
 
 export interface MapDataDto {
   svgWidth: number;
   svgHeight: number;
-  locations: LocationDto[];
+  provinces: ProvinceDto[];
 }
 
 // ── Raw shapes returned by GET /api/map ───────────────────────────────────────
@@ -44,6 +55,8 @@ export interface ApiLocationDto {
 
 export interface ApiProvinceDto {
   name: string;
+  /** Boundary polygon paths in raw image pixel space. */
+  paths: number[][][];
   locations: ApiLocationDto[];
 }
 

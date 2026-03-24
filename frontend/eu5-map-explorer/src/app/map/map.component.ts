@@ -11,7 +11,8 @@ import {
 } from '@angular/core';
 import * as L from 'leaflet';
 import { MapService } from './map.service';
-import { LocationComponent, LocationHoverEvent } from './location/location.component';
+import { ProvinceComponent } from './province/province.component';
+import { MAP_PANES } from './map-panes';
 
 @Component({
   selector: 'app-map',
@@ -81,12 +82,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   private readonly mapService = inject(MapService);
   private map?: L.Map;
-  private locationRefs: ComponentRef<LocationComponent>[] = [];
+  private provinceRefs: ComponentRef<ProvinceComponent>[] = [];
 
   readonly zoomLevel = signal('—');
 
   ngAfterViewInit(): void {
-    this.mapService.getMapData().subscribe(({ svgWidth, svgHeight, locations }) => {
+    this.mapService.getMapData().subscribe(({ svgWidth, svgHeight, provinces }) => {
       // Build a minimal SVG shell — LocationComponents fill it with <path> elements.
       const ns = 'http://www.w3.org/2000/svg';
       const svgEl = document.createElementNS(ns, 'svg') as SVGSVGElement;
@@ -111,19 +112,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.zoomLevel.set(this.map!.getZoom().toFixed(2));
       });
 
+      // Register custom panes — must be done before any layer uses them.
+      for (const { name, zIndex } of Object.values(MAP_PANES)) {
+        const pane = this.map.createPane(name);
+        pane.style.zIndex = String(zIndex);
+      }
+
       // CRS.Simple: lat increases upward → SW=[0,0], NE=[h,w].
       const bounds: L.LatLngBoundsExpression = [[0, 0], [svgHeight, svgWidth]];
       L.svgOverlay(svgEl, bounds).addTo(this.map);
       this.map.fitBounds(bounds);
       this.zoomLevel.set(this.map.getZoom().toFixed(2));
 
-      // Spawn one LocationComponent per location; each appends its own <g> to
-      // the SVG group and manages its own hover state.
-      for (const location of locations) {
-        const ref = this.locationHost.createComponent(LocationComponent);
+      // Spawn one ProvinceComponent per province; each manages its own
+      // boundary outline and spawns LocationComponent children.
+      for (const province of provinces) {
+        const ref = this.locationHost.createComponent(ProvinceComponent);
         ref.setInput('map', this.map);
-        ref.setInput('location', location);
-        this.locationRefs.push(ref);
+        ref.setInput('province', province);
+        this.provinceRefs.push(ref);
       }
     });
   }
@@ -131,7 +138,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   ngOnDestroy(): void {
-    this.locationRefs.forEach(ref => ref.destroy());
+    this.provinceRefs.forEach(ref => ref.destroy());
     this.map?.remove();
   }
 }

@@ -2,10 +2,10 @@
 #r "nuget: Tamar.Clausewitz, 0.5.1"
 #nullable enable
 
+using System.Collections.Concurrent;
+using System.Text.Json;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using System.Text.Json;
-using System.Collections.Concurrent;
 using Tamar.Clausewitz;
 
 // ── Find project dir by walking up from CWD ──────────────────────────────────
@@ -16,7 +16,9 @@ while (projectDir != null && !File.Exists(Path.Combine(projectDir, "EU5MapExplor
 
 if (projectDir == null)
 {
-    Console.Error.WriteLine("Error: Could not locate EU5MapExplorer.Api.csproj. Run from inside the project directory.");
+    Console.Error.WriteLine(
+        "Error: Could not locate EU5MapExplorer.Api.csproj. Run from inside the project directory."
+    );
     return;
 }
 
@@ -26,11 +28,14 @@ string? dataPath = null;
 foreach (var filename in new[] { "appsettings.Development.json", "appsettings.json" })
 {
     var fullPath = Path.Combine(projectDir, filename);
-    if (!File.Exists(fullPath)) continue;
+    if (!File.Exists(fullPath))
+        continue;
     using var doc = JsonDocument.Parse(File.ReadAllText(fullPath));
-    if (doc.RootElement.TryGetProperty("EU5", out var eu5) &&
-        eu5.TryGetProperty("DataPath", out var dp) &&
-        !string.IsNullOrWhiteSpace(dp.GetString()))
+    if (
+        doc.RootElement.TryGetProperty("EU5", out var eu5)
+        && eu5.TryGetProperty("DataPath", out var dp)
+        && !string.IsNullOrWhiteSpace(dp.GetString())
+    )
     {
         dataPath = dp.GetString();
         break;
@@ -39,7 +44,9 @@ foreach (var filename in new[] { "appsettings.Development.json", "appsettings.js
 
 if (dataPath == null)
 {
-    Console.Error.WriteLine("Error: EU5:DataPath is not configured in appsettings.Development.json.");
+    Console.Error.WriteLine(
+        "Error: EU5:DataPath is not configured in appsettings.Development.json."
+    );
     return;
 }
 
@@ -55,7 +62,7 @@ if (!File.Exists(definitionsPath))
 }
 
 var definitionsRoot = Interpreter.InterpretText(File.ReadAllText(definitionsPath));
-var svealandClause  = definitionsRoot.FindClauseDepthFirst("svealand_area");
+var svealandClause = definitionsRoot.FindClauseDepthFirst("svealand_area");
 if (svealandClause == null)
 {
     Console.Error.WriteLine("Error: svealand_area not found in definitions.txt.");
@@ -69,10 +76,11 @@ var svealandProvinces = new Dictionary<string, List<string>>();
 foreach (var provinceClause in svealandClause.Clauses)
 {
     var provinceName = provinceClause.Name;
-    if (string.IsNullOrEmpty(provinceName)) continue;
+    if (string.IsNullOrEmpty(provinceName))
+        continue;
 
-    var locations = provinceClause.Tokens
-        .Select(t => t.Value)
+    var locations = provinceClause
+        .Tokens.Select(t => t.Value)
         .Where(v => !string.IsNullOrEmpty(v))
         .ToList();
 
@@ -123,31 +131,46 @@ if (!File.Exists(templatesPath))
 
 // location name → { topography, climate, vegetation?, raw_material? }
 record LocationTemplate(string Topography, string Climate, string? Vegetation, string? RawMaterial);
+
 var templateLookup = new Dictionary<string, LocationTemplate>(StringComparer.OrdinalIgnoreCase);
 
 var templatesRoot = Interpreter.InterpretText(File.ReadAllText(templatesPath));
 foreach (var locClause in templatesRoot.Clauses)
 {
-    if (string.IsNullOrEmpty(locClause.Name)) continue;
+    if (string.IsNullOrEmpty(locClause.Name))
+        continue;
 
-    string? topography  = null;
-    string? climate     = null;
-    string? vegetation  = null;
+    string? topography = null;
+    string? climate = null;
+    string? vegetation = null;
     string? rawMaterial = null;
 
     foreach (var b in locClause.Bindings)
     {
         switch (b.Name)
         {
-            case "topography":   topography  = b.Value; break;
-            case "climate":      climate     = b.Value; break;
-            case "vegetation":   vegetation  = b.Value; break;
-            case "raw_material": rawMaterial = b.Value; break;
+            case "topography":
+                topography = b.Value;
+                break;
+            case "climate":
+                climate = b.Value;
+                break;
+            case "vegetation":
+                vegetation = b.Value;
+                break;
+            case "raw_material":
+                rawMaterial = b.Value;
+                break;
         }
     }
 
     if (topography != null && climate != null)
-        templateLookup[locClause.Name] = new LocationTemplate(topography, climate, vegetation, rawMaterial);
+        templateLookup[locClause.Name] = new LocationTemplate(
+            topography,
+            climate,
+            vegetation,
+            rawMaterial
+        );
 }
 
 Console.WriteLine($"  → {templateLookup.Count} location templates loaded.");
@@ -155,7 +178,8 @@ Console.WriteLine($"  → {templateLookup.Count} location templates loaded.");
 // ── Step 4: Match svealand locations to their colors ─────────────────────────
 
 // Flat list keeping province context: (province, location, r, g, b, hex)
-var locationColors = new List<(string province, string location, byte r, byte g, byte b, string hex)>();
+var locationColors =
+    new List<(string province, string location, byte r, byte g, byte b, string hex)>();
 
 foreach (var (province, locations) in svealandProvinces)
 {
@@ -175,6 +199,16 @@ foreach (var (province, locations) in svealandProvinces)
 
 Console.WriteLine($"\n  → {locationColors.Count} locations with colors.");
 
+// Build province → set of location indices (used later for province path tracing)
+var provinceIndexSets = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
+for (int ci = 0; ci < locationColors.Count; ci++)
+{
+    var prov = locationColors[ci].province;
+    if (!provinceIndexSets.ContainsKey(prov))
+        provinceIndexSets[prov] = new HashSet<int>();
+    provinceIndexSets[prov].Add(ci);
+}
+
 // ── Step 5: Load locations.png and map every pixel to a location index ────────
 
 Console.WriteLine("\nStep 5: Scanning image...");
@@ -187,8 +221,8 @@ if (!File.Exists(imagePath))
 }
 
 Console.WriteLine($"  Reading: {imagePath}");
-var image  = Image.Load<Rgba32>(imagePath);
-int width  = image.Width;
+var image = Image.Load<Rgba32>(imagePath);
+int width = image.Width;
 int height = image.Height;
 Console.WriteLine($"  Size: {width} x {height} px");
 
@@ -200,8 +234,8 @@ for (int i = 0; i < locationColors.Count; i++)
 // Single-pass scan
 var colorMap = new int[width, height];
 for (int y = 0; y < height; y++)
-    for (int x = 0; x < width; x++)
-        colorMap[x, y] = -1;
+for (int x = 0; x < width; x++)
+    colorMap[x, y] = -1;
 
 image.ProcessPixelRows(accessor =>
 {
@@ -220,25 +254,21 @@ image.ProcessPixelRows(accessor =>
 image.Dispose();
 Console.WriteLine("  Scan complete.");
 
-// ── Step 6: Trace boundary paths for every location (parallelised) ────────────
+// ── Shared tracing helpers ────────────────────────────────────────────────────
 
-Console.WriteLine($"\nStep 6: Tracing paths ({locationColors.Count} locations, {Environment.ProcessorCount} logical cores)...");
-
-// Right-hand-rule turn order (clockwise winding) — read-only, safe to share
+// Right-hand-rule turn order (clockwise winding) — read-only, safe to share across threads
 var cwOrder = new Dictionary<(int, int), (int, int)[]>
 {
-    [(0, -1)] = new[] { (1, 0), (0, -1), (-1, 0) },  // arrived N → try E, N, W
-    [(1,  0)] = new[] { (0, 1), (1,  0), (0, -1) },  // arrived E → try S, E, N
-    [(0,  1)] = new[] { (-1,0), (0,  1), (1,  0) },  // arrived S → try W, S, E
-    [(-1, 0)] = new[] { (0,-1), (-1, 0), (0,  1) },  // arrived W → try N, W, S
+    [(0, -1)] = new[] { (1, 0), (0, -1), (-1, 0) }, // arrived N → try E, N, W
+    [(1,  0)] = new[] { (0, 1), (1,  0), (0, -1) }, // arrived E → try S, E, N
+    [(0,  1)] = new[] { (-1, 0), (0, 1), (1,  0) }, // arrived S → try W, S, E
+    [(-1, 0)] = new[] { (0, -1), (-1, 0), (0,  1) }, // arrived W → try N, W, S
 };
 
-// Pre-allocated results array — each slot written by exactly one thread, no contention
-var results = new int[locationColors.Count][][][];
-
-Parallel.For(0, locationColors.Count, ci =>
+// Shared edge-graph tracer: isMember(x,y) returns true when the pixel at (x,y)
+// belongs to the shape being traced.
+int[][][] TracePaths(Func<int, int, bool> isMember)
 {
-    // ── Build boundary edge graph (reads colorMap read-only) ──────────────────
     var adj = new Dictionary<(int, int), HashSet<(int, int)>>();
     void Link((int, int) a, (int, int) b)
     {
@@ -249,16 +279,15 @@ Parallel.For(0, locationColors.Count, ci =>
     }
 
     for (int py = 0; py < height; py++)
-        for (int px = 0; px < width; px++)
-        {
-            if (colorMap[px, py] != ci) continue;
-            if (py == 0          || colorMap[px, py - 1] != ci) Link((px, py),     (px + 1, py));
-            if (py == height - 1 || colorMap[px, py + 1] != ci) Link((px, py + 1), (px + 1, py + 1));
-            if (px == 0          || colorMap[px - 1, py] != ci) Link((px, py),     (px, py + 1));
-            if (px == width  - 1 || colorMap[px + 1, py] != ci) Link((px + 1, py), (px + 1, py + 1));
-        }
+    for (int px = 0; px < width; px++)
+    {
+        if (!isMember(px, py)) continue;
+        if (py == 0          || !isMember(px, py - 1)) Link((px, py),     (px + 1, py));
+        if (py == height - 1 || !isMember(px, py + 1)) Link((px, py + 1), (px + 1, py + 1));
+        if (px == 0          || !isMember(px - 1, py)) Link((px, py),     (px, py + 1));
+        if (px == width  - 1 || !isMember(px + 1, py)) Link((px + 1, py), (px + 1, py + 1));
+    }
 
-    // ── Walk the edge graph tracing closed polygons ───────────────────────────
     var remaining = adj.ToDictionary(kvp => kvp.Key, kvp => new HashSet<(int, int)>(kvp.Value));
     void UseEdge((int, int) a, (int, int) b)
     {
@@ -266,8 +295,7 @@ Parallel.For(0, locationColors.Count, ci =>
         if (remaining.TryGetValue(b, out var sb)) { sb.Remove(a); if (sb.Count == 0) remaining.Remove(b); }
     }
 
-    var tracedPaths = new List<int[][]>(); // each entry = one closed polygon (array of [x,y] points)
-
+    var tracedPaths = new List<int[][]>();
     while (remaining.Count > 0)
     {
         var start     = remaining.Keys.OrderBy(v => v.Item2).ThenBy(v => v.Item1).First();
@@ -284,47 +312,70 @@ Parallel.For(0, locationColors.Count, ci =>
             if (!remaining.ContainsKey(curr)) break;
 
             var arrDir = (curr.Item1 - prev.Item1, curr.Item2 - prev.Item2);
-            (int, int) next  = default;
-            bool       found = false;
-
+            (int, int) next = default;
+            bool found = false;
             foreach (var tryDir in cwOrder[arrDir])
             {
                 var cand = (curr.Item1 + tryDir.Item1, curr.Item2 + tryDir.Item2);
-                if (remaining.TryGetValue(curr, out var neighbors) && neighbors.Contains(cand))
-                {
-                    next  = cand;
-                    found = true;
-                    break;
-                }
+                if (remaining.TryGetValue(curr, out var nb) && nb.Contains(cand))
+                    { next = cand; found = true; break; }
             }
-
             if (!found) break;
             UseEdge(curr, next);
             prev = curr;
             curr = next;
         }
 
-        // Strip collinear intermediate points to reduce output size
         var simplified = new List<int[]>();
         for (int i = 0; i < pts.Count; i++)
         {
-            if (i == 0 || i == pts.Count - 1)
-            {
-                simplified.Add(new[] { pts[i].Item1, pts[i].Item2 });
-                continue;
-            }
+            if (i == 0 || i == pts.Count - 1) { simplified.Add(new[] { pts[i].Item1, pts[i].Item2 }); continue; }
             var (ax, ay) = pts[i - 1];
             var (bx, by) = pts[i];
             var (cx, cy) = pts[i + 1];
             if ((bx - ax) * (cy - by) - (by - ay) * (cx - bx) != 0)
                 simplified.Add(new[] { bx, by });
         }
-
         tracedPaths.Add(simplified.ToArray());
     }
+    return tracedPaths.ToArray();
+}
 
-    results[ci] = tracedPaths.ToArray();
-    Console.WriteLine($"  [{ci + 1}/{locationColors.Count}] {locationColors[ci].location} ({locationColors[ci].hex}) → {tracedPaths.Count} path(s)");
+// ── Step 6: Trace boundary paths for every location (parallelised) ────────────
+
+Console.WriteLine(
+    $"\nStep 6: Tracing location paths ({locationColors.Count} locations, {Environment.ProcessorCount} logical cores)..."
+);
+
+// Pre-allocated results array — each slot written by exactly one thread, no contention
+var locationResults = new int[locationColors.Count][][][];
+
+Parallel.For(0, locationColors.Count, ci =>
+{
+    locationResults[ci] = TracePaths((px, py) => colorMap[px, py] == ci);
+    Console.WriteLine(
+        $"  [{ci + 1}/{locationColors.Count}] {locationColors[ci].location} ({locationColors[ci].hex}) → {locationResults[ci].Length} path(s)"
+    );
+});
+
+// ── Step 7: Trace boundary paths for every province (parallelised) ────────────
+
+var provinceNames = svealandProvinces.Keys.ToArray();
+
+Console.WriteLine(
+    $"\nStep 7: Tracing province paths ({provinceNames.Length} provinces, {Environment.ProcessorCount} logical cores)..."
+);
+
+// Pre-allocated results array — each slot written by exactly one thread, no contention
+var provinceResults = new int[provinceNames.Length][][][];
+
+Parallel.For(0, provinceNames.Length, pi =>
+{
+    var indices = provinceIndexSets[provinceNames[pi]];
+    provinceResults[pi] = TracePaths((px, py) => indices.Contains(colorMap[px, py]));
+    Console.WriteLine(
+        $"  [{pi + 1}/{provinceNames.Length}] {provinceNames[pi]} → {provinceResults[pi].Length} path(s)"
+    );
 });
 
 // ── Collect results into provinceMap (sequential — no contention) ─────────────
@@ -340,31 +391,37 @@ for (int ci = 0; ci < locationColors.Count; ci++)
 
     provinceMap[province].Add(new
     {
-        name        = locName,
-        color       = hex,
-        topography  = tmpl?.Topography,
-        climate     = tmpl?.Climate,
-        vegetation  = tmpl?.Vegetation,
+        name         = locName,
+        color        = hex,
+        topography   = tmpl?.Topography,
+        climate      = tmpl?.Climate,
+        vegetation   = tmpl?.Vegetation,
         raw_material = tmpl?.RawMaterial,
-        paths       = results[ci]
+        paths        = locationResults[ci],
     });
 }
 
-// ── Step 7: Write JSON ────────────────────────────────────────────────────────
+// ── Step 8: Write JSON ────────────────────────────────────────────────────────
 
-Console.WriteLine("\nStep 7: Writing JSON...");
+Console.WriteLine("\nStep 8: Writing JSON...");
 
 var output = new
 {
-    area      = "svealand_area",
-    provinces = svealandProvinces.Keys.Select(pName => new
-    {
-        name      = pName,
-        locations = provinceMap.TryGetValue(pName, out var locs) ? locs : new List<object>()
-    }).ToList()
+    area = "svealand_area",
+    provinces = provinceNames
+        .Select((pName, pi) => new
+        {
+            name      = pName,
+            paths     = provinceResults[pi],
+            locations = provinceMap.TryGetValue(pName, out var locs) ? locs : new List<object>(),
+        })
+        .ToList(),
 };
 
 var jsonOutputPath = Path.Combine(projectDir, "Scripts", "svealand_area.json");
-File.WriteAllText(jsonOutputPath, JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true }));
+File.WriteAllText(
+    jsonOutputPath,
+    JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true })
+);
 
-Console.WriteLine($"\nDone. JSON saved to: {jsonOutputPath}");
+Console.WriteLine($"\nAll done. JSON saved to: {jsonOutputPath}");

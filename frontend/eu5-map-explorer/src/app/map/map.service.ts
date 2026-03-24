@@ -6,6 +6,7 @@ import {
   LocationDto,
   MapDataDto,
   PathCoordinates,
+  ProvinceDto,
 } from './models/location.dto';
 
 @Injectable({ providedIn: 'root' })
@@ -15,7 +16,7 @@ export class MapService {
 
   /**
    * Fetches map data from GET /api/map and converts it into the MapDataDto
-   * shape expected by MapComponent / LocationComponent.
+   * shape expected by MapComponent / ProvinceComponent / LocationComponent.
    *
    * The API returns pixel-space coordinates [x, y] from the source PNG.
    * Leaflet's CRS.Simple expects [lat, lng] where lat increases upward, so
@@ -34,6 +35,12 @@ export class MapService {
     let maxY = 0;
 
     for (const province of response.provinces) {
+      for (const path of province.paths) {
+        for (const [x, y] of path) {
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
       for (const location of province.locations) {
         for (const path of location.paths) {
           for (const [x, y] of path) {
@@ -44,32 +51,40 @@ export class MapService {
       }
     }
 
-    const svgWidth = maxX;
+    const svgWidth  = maxX;
     const svgHeight = maxY;
-    this.mapHeight = svgHeight;
+    this.mapHeight  = svgHeight;
 
-    // ── Pass 2: build LocationDtos with Leaflet-space coordinates ─────────────
-    const locations: LocationDto[] = [];
+    const flip = ([x, y]: number[]): PathCoordinates => [svgHeight - y, x];
 
-    for (const province of response.provinces) {
-      for (const loc of province.locations) {
-        const paths = loc.paths.map(path =>
-          path.map(([x, y]) => [svgHeight - y, x] as PathCoordinates),
-        );
-        const { climate, topography, raw_material, vegetation } = loc;
+    // ── Pass 2: build ProvinceDtos and LocationDtos ───────────────────────────
+    const provinces: ProvinceDto[] = [];
 
-        locations.push({
-          id: loc.name,
-          color: `#${loc.color}`,
-          climate,
-          topography,
-          raw_material,
-          vegetation,
-          paths,
-        });
-      }
+    for (const apiProvince of response.provinces) {
+      // Build the ProvinceDto shell first so LocationDtos can reference it.
+      const provinceDto: ProvinceDto = {
+        id:        apiProvince.name,
+        paths:     apiProvince.paths.map(path => path.map(flip)),
+        locations: [],
+      };
+
+      provinceDto.locations = apiProvince.locations.map(loc => {
+        const locationDto: LocationDto = {
+          id:           loc.name,
+          color:        `#${loc.color}`,
+          topography:   loc.topography,
+          climate:      loc.climate,
+          vegetation:   loc.vegetation,
+          raw_material: loc.raw_material,
+          paths:        loc.paths.map(path => path.map(flip)),
+          province:     provinceDto,
+        };
+        return locationDto;
+      });
+
+      provinces.push(provinceDto);
     }
 
-    return { svgWidth, svgHeight, locations };
+    return { svgWidth, svgHeight, provinces };
   }
 }

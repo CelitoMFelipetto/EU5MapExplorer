@@ -1,6 +1,7 @@
 import { Component, Input, OnChanges } from '@angular/core';
 import { LocationDto } from '../models/location.dto';
 import * as L from 'leaflet';
+import { MAP_PANES } from '../map-panes';
 
 export interface LocationHoverEvent {
   location: LocationDto;
@@ -49,7 +50,11 @@ export class LocationComponent implements OnChanges {
 
   private render(): void {
     // creates the location
-    this.polygon = L.polygon(this.location.paths, { ...regularStyle, fillColor: this.getColor() });
+    this.polygon = L.polygon(this.location.paths, {
+      ...regularStyle,
+      fillColor: this.getColor(),
+      pane: MAP_PANES.locations.name,
+    });
 
     if (this.location.topography !== "lakes") {
       // adds interactivity when is not a body of water
