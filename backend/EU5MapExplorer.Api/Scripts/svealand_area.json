@@ -7,6 +7,10 @@
         {
           "name": "stockholm",
           "color": "dda910",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "grasslands",
+          "raw_material": "clay",
           "paths": [
             [
               [
@@ -1155,6 +1159,10 @@
         {
           "name": "norrtalje",
           "color": "540601",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "fish",
           "paths": [
             [
               [
@@ -1685,6 +1693,10 @@
         {
           "name": "enkoping",
           "color": "a82db1",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "grasslands",
+          "raw_material": "millet",
           "paths": [
             [
               [
@@ -2305,6 +2317,10 @@
         {
           "name": "uppsala",
           "color": "541583",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "farmland",
+          "raw_material": "wheat",
           "paths": [
             [
               [
@@ -2717,6 +2733,10 @@
         {
           "name": "kastelholm",
           "color": "001e05",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "grasslands",
+          "raw_material": "fish",
           "paths": [
             [
               [
@@ -3613,6 +3633,10 @@
         {
           "name": "tierp",
           "color": "a83989",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "fish",
           "paths": [
             [
               [
@@ -4197,6 +4221,10 @@
         {
           "name": "heby",
           "color": "003c0a",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "grasslands",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -4506,6 +4534,10 @@
         {
           "name": "nykoping",
           "color": "7e0981",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "grasslands",
+          "raw_material": "fish",
           "paths": [
             [
               [
@@ -5058,6 +5090,10 @@
         {
           "name": "kolmarden",
           "color": "ddb43d",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "marble",
           "paths": [
             [
               [
@@ -5406,6 +5442,10 @@
         {
           "name": "strangnas",
           "color": "7e3609",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "sand",
           "paths": [
             [
               [
@@ -6036,6 +6076,10 @@
         {
           "name": "oppunda",
           "color": "54420b",
+          "topography": "wetlands",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -6708,6 +6752,10 @@
         {
           "name": "sodertalje",
           "color": "ccc5b0",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "grasslands",
+          "raw_material": "clay",
           "paths": [
             [
               [
@@ -7562,6 +7610,10 @@
         {
           "name": "malaren",
           "color": "3362f6",
+          "topography": "lakes",
+          "climate": "continental",
+          "vegetation": null,
+          "raw_material": null,
           "paths": [
             [
               [
@@ -9218,6 +9270,10 @@
         {
           "name": "hjalmaren_lake",
           "color": "11a9ec",
+          "topography": "lakes",
+          "climate": "continental",
+          "vegetation": null,
+          "raw_material": null,
           "paths": [
             [
               [
@@ -9661,6 +9717,10 @@
         {
           "name": "arboga",
           "color": "eedfb5",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -10229,6 +10289,10 @@
         {
           "name": "vasteras",
           "color": "ccbd92",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -10677,6 +10741,10 @@
         {
           "name": "nora",
           "color": "7e458b",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "iron",
           "paths": [
             [
               [
@@ -11017,6 +11085,10 @@
         {
           "name": "sala",
           "color": "a8480c",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -11505,6 +11577,10 @@
         {
           "name": "skinskatteberg",
           "color": "54518d",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "iron",
           "paths": [
             [
               [
@@ -11865,6 +11941,10 @@
         {
           "name": "linde",
           "color": "9933f6",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "copper",
           "paths": [
             [
               [
@@ -12169,6 +12249,10 @@
         {
           "name": "grythyttan",
           "color": "ee2929",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "iron",
           "paths": [
             [
               [
@@ -12414,6 +12498,10 @@
         {
           "name": "orebro",
           "color": "886610",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "livestock",
           "paths": [
             [
               [
@@ -12750,6 +12838,10 @@
         {
           "name": "riseberga",
           "color": "2a4e0d",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -13206,6 +13298,10 @@
         {
           "name": "goksholm",
           "color": "7e540e",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "medicaments",
           "paths": [
             [
               [
@@ -13593,6 +13689,10 @@
         {
           "name": "varnum",
           "color": "664838",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -13993,6 +14093,10 @@
         {
           "name": "tingvalla",
           "color": "dd2942",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "wild_game",
           "paths": [
             [
               [
@@ -14571,6 +14675,10 @@
         {
           "name": "nas",
           "color": "dd3288",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "fish",
           "paths": [
             [
               [
@@ -15059,6 +15167,10 @@
         {
           "name": "nordmark",
           "color": "99f00b",
+          "topography": "plateau",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "beeswax",
           "paths": [
             [
               [
@@ -15471,6 +15583,10 @@
         {
           "name": "gillberg",
           "color": "002933",
+          "topography": "wetlands",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -15967,6 +16083,10 @@
         {
           "name": "farnebo",
           "color": "446265",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -16623,6 +16743,10 @@
         {
           "name": "fryksdal",
           "color": "00f006",
+          "topography": "wetlands",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "wild_game",
           "paths": [
             [
               [
@@ -17111,6 +17235,10 @@
         {
           "name": "josse",
           "color": "eef006",
+          "topography": "wetlands",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -17575,6 +17703,10 @@
         {
           "name": "vanern",
           "color": "33eec9",
+          "topography": "lakes",
+          "climate": "continental",
+          "vegetation": null,
+          "raw_material": null,
           "paths": [
             [
               [
@@ -19350,6 +19482,10 @@
         {
           "name": "avesta",
           "color": "ee7f4c",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "woods",
+          "raw_material": "iron",
           "paths": [
             [
               [
@@ -19622,6 +19758,10 @@
         {
           "name": "falun",
           "color": "ee2d10",
+          "topography": "plateau",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "copper",
           "paths": [
             [
               [
@@ -20046,6 +20186,10 @@
         {
           "name": "leksand",
           "color": "002d10",
+          "topography": "plateau",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -20750,6 +20894,10 @@
         {
           "name": "grange",
           "color": "cc82a6",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "iron",
           "paths": [
             [
               [
@@ -21306,6 +21454,10 @@
         {
           "name": "malung",
           "color": "eec01f",
+          "topography": "plateau",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -22130,6 +22282,10 @@
         {
           "name": "mora",
           "color": "00c01f",
+          "topography": "hills",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "wild_game",
           "paths": [
             [
               [
@@ -22812,6 +22968,10 @@
         {
           "name": "idre",
           "color": "ccba83",
+          "topography": "hills",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -23568,6 +23728,10 @@
         {
           "name": "hedemora",
           "color": "442aba",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "woods",
+          "raw_material": "horses",
           "paths": [
             [
               [
@@ -23944,6 +24108,10 @@
         {
           "name": "orsa",
           "color": "ee2e79",
+          "topography": "plateau",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "wild_game",
           "paths": [
             [
               [
@@ -24672,6 +24840,10 @@
         {
           "name": "soderbarke",
           "color": "ee2f5b",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -25032,6 +25204,10 @@
         {
           "name": "stora_tuna",
           "color": "002f5b",
+          "topography": "plateau",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -25512,6 +25688,10 @@
         {
           "name": "floda",
           "color": "882f60",
+          "topography": "plateau",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [
@@ -25912,6 +26092,10 @@
         {
           "name": "siljan",
           "color": "0030b0",
+          "topography": "lakes",
+          "climate": "continental",
+          "vegetation": null,
+          "raw_material": null,
           "paths": [
             [
               [
@@ -26427,6 +26611,10 @@
         {
           "name": "gefle",
           "color": "002b38",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "fish",
           "paths": [
             [
               [
@@ -26755,6 +26943,10 @@
         {
           "name": "hedesunda",
           "color": "cc2b65",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "forest",
+          "raw_material": "beeswax",
           "paths": [
             [
               [
@@ -27123,6 +27315,10 @@
         {
           "name": "hamrange",
           "color": "882cf1",
+          "topography": "flatland",
+          "climate": "continental",
+          "vegetation": "woods",
+          "raw_material": "fish",
           "paths": [
             [
               [
@@ -27467,6 +27663,10 @@
         {
           "name": "ockelbo",
           "color": "554129",
+          "topography": "flatland",
+          "climate": "arctic",
+          "vegetation": "forest",
+          "raw_material": "lumber",
           "paths": [
             [
               [

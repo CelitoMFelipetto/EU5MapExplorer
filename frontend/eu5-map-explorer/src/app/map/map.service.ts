@@ -44,9 +44,9 @@ export class MapService {
       }
     }
 
-    const svgWidth  = maxX;
+    const svgWidth = maxX;
     const svgHeight = maxY;
-    this.mapHeight  = svgHeight;
+    this.mapHeight = svgHeight;
 
     // ── Pass 2: build LocationDtos with Leaflet-space coordinates ─────────────
     const locations: LocationDto[] = [];
@@ -56,10 +56,15 @@ export class MapService {
         const paths = loc.paths.map(path =>
           path.map(([x, y]) => [svgHeight - y, x] as PathCoordinates),
         );
+        const { climate, topography, raw_material, vegetation } = loc;
 
         locations.push({
-          id:    loc.name,
+          id: loc.name,
           color: `#${loc.color}`,
+          climate,
+          topography,
+          raw_material,
+          vegetation,
           paths,
         });
       }

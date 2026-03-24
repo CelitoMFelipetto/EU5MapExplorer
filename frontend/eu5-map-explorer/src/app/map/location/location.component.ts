@@ -19,6 +19,8 @@ const highlightStyle: L.PolylineOptions = {
   fillOpacity: 0.7,
 }
 
+const lakeColor: string = "#11a9ec"
+
 /**
  * Headless component — no template. Each instance manages a single L.Polygon 
  * element appended to the Leaflet map, containing all closed-loop paths for
@@ -47,21 +49,31 @@ export class LocationComponent implements OnChanges {
 
   private render(): void {
     // creates the location
-    this.polygon = L.polygon(this.location.paths, { ...regularStyle, fillColor: this.location.color });
-    // adds interactivity
-    this.polygon.on({
-      mouseover: () => this.highlight(),
-      mouseout: () => this.resetHighlight(),
-    });
-    this.polygon.bindTooltip(this.location.id);
+    this.polygon = L.polygon(this.location.paths, { ...regularStyle, fillColor: this.getColor() });
+
+    if (this.location.topography !== "lakes") {
+      // adds interactivity when is not a body of water
+      this.polygon.on({
+        mouseover: () => this.highlight(),
+        mouseout: () => this.resetHighlight(),
+      });
+      this.polygon.bindTooltip(this.location.id);
+    }
     // adds location to the map
     this.polygon.addTo(this.map);
+  }
+
+  private getColor(): string {
+    if (this.location.topography === "lakes") {
+      return lakeColor;
+    }
+    return this.location.color;
   }
 
   private highlight(): void {
     this.polygon?.setStyle({
       ...highlightStyle,
-      color: this.location.color,
+      color: this.getColor(),
     });
     this.polygon?.bringToFront();
   }

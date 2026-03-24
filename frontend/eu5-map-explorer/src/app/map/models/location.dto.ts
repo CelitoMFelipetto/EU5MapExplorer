@@ -9,6 +9,11 @@ export interface LocationDto {
   id: string;
   /** Full hex colour string with '#' prefix (e.g. '#dda910'). */
   color: string;
+  /** Location meta data */
+  topography: string;
+  climate: string;
+  vegetation: string | null;
+  raw_material: string | null;
   /** Leaflet-ready polygon paths — coordinates already converted to [lat, lng]. */
   paths: PolygonPath;
 }
@@ -26,6 +31,10 @@ export interface ApiLocationDto {
   name: string;
   /** 6-char hex colour without '#' (e.g. 'dda910'). */
   color: string;
+  topography: string;
+  climate: string;
+  vegetation: string | null;
+  raw_material: string | null;
   /**
    * Boundary polygon paths in raw image pixel space.
    * paths[pathIndex][pointIndex] = [x, y]

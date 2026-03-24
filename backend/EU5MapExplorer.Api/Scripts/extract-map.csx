@@ -5,6 +5,7 @@
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using Tamar.Clausewitz;
 
 // ── Find project dir by walking up from CWD ──────────────────────────────────
@@ -109,7 +110,49 @@ foreach (var file in Directory.GetFiles(namedLocationsDir, "*.txt").OrderBy(f =>
 
 Console.WriteLine($"  → {colorLookup.Count} color entries loaded.");
 
-// ── Step 3: Match svealand locations to their colors ─────────────────────────
+// ── Step 3: Parse location_templates.txt → per-location properties ────────────
+
+Console.WriteLine("\nStep 3: Parsing location_templates.txt...");
+
+var templatesPath = Path.Combine(dataPath, "in_game", "map_data", "location_templates.txt");
+if (!File.Exists(templatesPath))
+{
+    Console.Error.WriteLine($"Error: File not found: {templatesPath}");
+    return;
+}
+
+// location name → { topography, climate, vegetation?, raw_material? }
+record LocationTemplate(string Topography, string Climate, string? Vegetation, string? RawMaterial);
+var templateLookup = new Dictionary<string, LocationTemplate>(StringComparer.OrdinalIgnoreCase);
+
+var templatesRoot = Interpreter.InterpretText(File.ReadAllText(templatesPath));
+foreach (var locClause in templatesRoot.Clauses)
+{
+    if (string.IsNullOrEmpty(locClause.Name)) continue;
+
+    string? topography  = null;
+    string? climate     = null;
+    string? vegetation  = null;
+    string? rawMaterial = null;
+
+    foreach (var b in locClause.Bindings)
+    {
+        switch (b.Name)
+        {
+            case "topography":   topography  = b.Value; break;
+            case "climate":      climate     = b.Value; break;
+            case "vegetation":   vegetation  = b.Value; break;
+            case "raw_material": rawMaterial = b.Value; break;
+        }
+    }
+
+    if (topography != null && climate != null)
+        templateLookup[locClause.Name] = new LocationTemplate(topography, climate, vegetation, rawMaterial);
+}
+
+Console.WriteLine($"  → {templateLookup.Count} location templates loaded.");
+
+// ── Step 4: Match svealand locations to their colors ─────────────────────────
 
 // Flat list keeping province context: (province, location, r, g, b, hex)
 var locationColors = new List<(string province, string location, byte r, byte g, byte b, string hex)>();
@@ -132,9 +175,9 @@ foreach (var (province, locations) in svealandProvinces)
 
 Console.WriteLine($"\n  → {locationColors.Count} locations with colors.");
 
-// ── Step 4: Load locations.png and map every pixel to a location index ────────
+// ── Step 5: Load locations.png and map every pixel to a location index ────────
 
-Console.WriteLine("\nStep 4: Scanning image...");
+Console.WriteLine("\nStep 5: Scanning image...");
 
 var imagePath = Path.Combine(dataPath, "in_game", "map_data", "locations.png");
 if (!File.Exists(imagePath))
@@ -177,11 +220,11 @@ image.ProcessPixelRows(accessor =>
 image.Dispose();
 Console.WriteLine("  Scan complete.");
 
-// ── Step 5: Trace boundary paths for every location ───────────────────────────
+// ── Step 6: Trace boundary paths for every location (parallelised) ────────────
 
-Console.WriteLine("\nStep 5: Tracing paths...");
+Console.WriteLine($"\nStep 6: Tracing paths ({locationColors.Count} locations, {Environment.ProcessorCount} logical cores)...");
 
-// Right-hand-rule turn order (clockwise winding)
+// Right-hand-rule turn order (clockwise winding) — read-only, safe to share
 var cwOrder = new Dictionary<(int, int), (int, int)[]>
 {
     [(0, -1)] = new[] { (1, 0), (0, -1), (-1, 0) },  // arrived N → try E, N, W
@@ -190,15 +233,12 @@ var cwOrder = new Dictionary<(int, int), (int, int)[]>
     [(-1, 0)] = new[] { (0,-1), (-1, 0), (0,  1) },  // arrived W → try N, W, S
 };
 
-// provinceMap: province name → list of location JSON objects
-var provinceMap = new Dictionary<string, List<object>>();
+// Pre-allocated results array — each slot written by exactly one thread, no contention
+var results = new int[locationColors.Count][][][];
 
-for (int ci = 0; ci < locationColors.Count; ci++)
+Parallel.For(0, locationColors.Count, ci =>
 {
-    var (province, locName, _, _, _, hex) = locationColors[ci];
-    Console.WriteLine($"  Tracing {locName} ({hex})...");
-
-    // Build boundary edge graph
+    // ── Build boundary edge graph (reads colorMap read-only) ──────────────────
     var adj = new Dictionary<(int, int), HashSet<(int, int)>>();
     void Link((int, int) a, (int, int) b)
     {
@@ -218,7 +258,7 @@ for (int ci = 0; ci < locationColors.Count; ci++)
             if (px == width  - 1 || colorMap[px + 1, py] != ci) Link((px + 1, py), (px + 1, py + 1));
         }
 
-    // Walk the edge graph tracing closed polygons
+    // ── Walk the edge graph tracing closed polygons ───────────────────────────
     var remaining = adj.ToDictionary(kvp => kvp.Key, kvp => new HashSet<(int, int)>(kvp.Value));
     void UseEdge((int, int) a, (int, int) b)
     {
@@ -226,7 +266,7 @@ for (int ci = 0; ci < locationColors.Count; ci++)
         if (remaining.TryGetValue(b, out var sb)) { sb.Remove(a); if (sb.Count == 0) remaining.Remove(b); }
     }
 
-    var tracedPaths = new List<int[][]>();
+    var tracedPaths = new List<int[][]>(); // each entry = one closed polygon (array of [x,y] points)
 
     while (remaining.Count > 0)
     {
@@ -283,22 +323,36 @@ for (int ci = 0; ci < locationColors.Count; ci++)
         tracedPaths.Add(simplified.ToArray());
     }
 
-    Console.WriteLine($"    → {tracedPaths.Count} path(s)");
+    results[ci] = tracedPaths.ToArray();
+    Console.WriteLine($"  [{ci + 1}/{locationColors.Count}] {locationColors[ci].location} ({locationColors[ci].hex}) → {tracedPaths.Count} path(s)");
+});
 
+// ── Collect results into provinceMap (sequential — no contention) ─────────────
+var provinceMap = new Dictionary<string, List<object>>();
+
+for (int ci = 0; ci < locationColors.Count; ci++)
+{
+    var (province, locName, _, _, _, hex) = locationColors[ci];
     if (!provinceMap.ContainsKey(province))
         provinceMap[province] = new List<object>();
 
+    templateLookup.TryGetValue(locName, out var tmpl);
+
     provinceMap[province].Add(new
     {
-        name  = locName,
-        color = hex,
-        paths = tracedPaths
+        name        = locName,
+        color       = hex,
+        topography  = tmpl?.Topography,
+        climate     = tmpl?.Climate,
+        vegetation  = tmpl?.Vegetation,
+        raw_material = tmpl?.RawMaterial,
+        paths       = results[ci]
     });
 }
 
-// ── Step 6: Write JSON ────────────────────────────────────────────────────────
+// ── Step 7: Write JSON ────────────────────────────────────────────────────────
 
-Console.WriteLine("\nStep 6: Writing JSON...");
+Console.WriteLine("\nStep 7: Writing JSON...");
 
 var output = new
 {
