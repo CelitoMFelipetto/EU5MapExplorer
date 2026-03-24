@@ -263,9 +263,9 @@ Console.WriteLine("  Scan complete.");
 var cwOrder = new Dictionary<(int, int), (int, int)[]>
 {
     [(0, -1)] = new[] { (1, 0), (0, -1), (-1, 0) }, // arrived N → try E, N, W
-    [(1,  0)] = new[] { (0, 1), (1,  0), (0, -1) }, // arrived E → try S, E, N
-    [(0,  1)] = new[] { (-1, 0), (0, 1), (1,  0) }, // arrived S → try W, S, E
-    [(-1, 0)] = new[] { (0, -1), (-1, 0), (0,  1) }, // arrived W → try N, W, S
+    [(1, 0)] = new[] { (0, 1), (1, 0), (0, -1) }, // arrived E → try S, E, N
+    [(0, 1)] = new[] { (-1, 0), (0, 1), (1, 0) }, // arrived S → try W, S, E
+    [(-1, 0)] = new[] { (0, -1), (-1, 0), (0, 1) }, // arrived W → try N, W, S
 };
 
 // Shared edge-graph tracer: isMember(x,y) returns true when the pixel at (x,y)
@@ -275,8 +275,10 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
     var adj = new Dictionary<(int, int), HashSet<(int, int)>>();
     void Link((int, int) a, (int, int) b)
     {
-        if (!adj.ContainsKey(a)) adj[a] = new HashSet<(int, int)>();
-        if (!adj.ContainsKey(b)) adj[b] = new HashSet<(int, int)>();
+        if (!adj.ContainsKey(a))
+            adj[a] = new HashSet<(int, int)>();
+        if (!adj.ContainsKey(b))
+            adj[b] = new HashSet<(int, int)>();
         adj[a].Add(b);
         adj[b].Add(a);
     }
@@ -284,35 +286,51 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
     for (int py = 0; py < height; py++)
     for (int px = 0; px < width; px++)
     {
-        if (!isMember(px, py)) continue;
-        if (py == 0          || !isMember(px, py - 1)) Link((px, py),     (px + 1, py));
-        if (py == height - 1 || !isMember(px, py + 1)) Link((px, py + 1), (px + 1, py + 1));
-        if (px == 0          || !isMember(px - 1, py)) Link((px, py),     (px, py + 1));
-        if (px == width  - 1 || !isMember(px + 1, py)) Link((px + 1, py), (px + 1, py + 1));
+        if (!isMember(px, py))
+            continue;
+        if (py == 0 || !isMember(px, py - 1))
+            Link((px, py), (px + 1, py));
+        if (py == height - 1 || !isMember(px, py + 1))
+            Link((px, py + 1), (px + 1, py + 1));
+        if (px == 0 || !isMember(px - 1, py))
+            Link((px, py), (px, py + 1));
+        if (px == width - 1 || !isMember(px + 1, py))
+            Link((px + 1, py), (px + 1, py + 1));
     }
 
     var remaining = adj.ToDictionary(kvp => kvp.Key, kvp => new HashSet<(int, int)>(kvp.Value));
     void UseEdge((int, int) a, (int, int) b)
     {
-        if (remaining.TryGetValue(a, out var sa)) { sa.Remove(b); if (sa.Count == 0) remaining.Remove(a); }
-        if (remaining.TryGetValue(b, out var sb)) { sb.Remove(a); if (sb.Count == 0) remaining.Remove(b); }
+        if (remaining.TryGetValue(a, out var sa))
+        {
+            sa.Remove(b);
+            if (sa.Count == 0)
+                remaining.Remove(a);
+        }
+        if (remaining.TryGetValue(b, out var sb))
+        {
+            sb.Remove(a);
+            if (sb.Count == 0)
+                remaining.Remove(b);
+        }
     }
 
     var tracedPaths = new List<int[][]>();
     while (remaining.Count > 0)
     {
-        var start     = remaining.Keys.OrderBy(v => v.Item2).ThenBy(v => v.Item1).First();
+        var start = remaining.Keys.OrderBy(v => v.Item2).ThenBy(v => v.Item1).First();
         var firstNext = remaining[start].OrderBy(v => v.Item2).ThenBy(v => v.Item1).First();
         UseEdge(start, firstNext);
 
-        var pts  = new List<(int, int)> { start };
+        var pts = new List<(int, int)> { start };
         var prev = start;
         var curr = firstNext;
 
         while (curr != start)
         {
             pts.Add(curr);
-            if (!remaining.ContainsKey(curr)) break;
+            if (!remaining.ContainsKey(curr))
+                break;
 
             var arrDir = (curr.Item1 - prev.Item1, curr.Item2 - prev.Item2);
             (int, int) next = default;
@@ -321,9 +339,14 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
             {
                 var cand = (curr.Item1 + tryDir.Item1, curr.Item2 + tryDir.Item2);
                 if (remaining.TryGetValue(curr, out var nb) && nb.Contains(cand))
-                    { next = cand; found = true; break; }
+                {
+                    next = cand;
+                    found = true;
+                    break;
+                }
             }
-            if (!found) break;
+            if (!found)
+                break;
             UseEdge(curr, next);
             prev = curr;
             curr = next;
@@ -332,7 +355,11 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
         var simplified = new List<int[]>();
         for (int i = 0; i < pts.Count; i++)
         {
-            if (i == 0 || i == pts.Count - 1) { simplified.Add(new[] { pts[i].Item1, pts[i].Item2 }); continue; }
+            if (i == 0 || i == pts.Count - 1)
+            {
+                simplified.Add(new[] { pts[i].Item1, pts[i].Item2 });
+                continue;
+            }
             var (ax, ay) = pts[i - 1];
             var (bx, by) = pts[i];
             var (cx, cy) = pts[i + 1];
@@ -353,13 +380,17 @@ Console.WriteLine(
 // Pre-allocated results array — each slot written by exactly one thread, no contention
 var locationResults = new int[locationColors.Count][][][];
 
-Parallel.For(0, locationColors.Count, ci =>
-{
-    locationResults[ci] = TracePaths((px, py) => colorMap[px, py] == ci);
-    Console.WriteLine(
-        $"  [{ci + 1}/{locationColors.Count}] {locationColors[ci].location} ({locationColors[ci].hex}) → {locationResults[ci].Length} path(s)"
-    );
-});
+Parallel.For(
+    0,
+    locationColors.Count,
+    ci =>
+    {
+        locationResults[ci] = TracePaths((px, py) => colorMap[px, py] == ci);
+        Console.WriteLine(
+            $"  [{ci + 1}/{locationColors.Count}] {locationColors[ci].location} ({locationColors[ci].hex}) → {locationResults[ci].Length} path(s)"
+        );
+    }
+);
 
 // ── Step 7: Trace boundary paths for every province (parallelised) ────────────
 
@@ -372,14 +403,18 @@ Console.WriteLine(
 // Pre-allocated results array — each slot written by exactly one thread, no contention
 var provinceResults = new int[provinceNames.Length][][][];
 
-Parallel.For(0, provinceNames.Length, pi =>
-{
-    var indices = provinceIndexSets[provinceNames[pi]];
-    provinceResults[pi] = TracePaths((px, py) => indices.Contains(colorMap[px, py]));
-    Console.WriteLine(
-        $"  [{pi + 1}/{provinceNames.Length}] {provinceNames[pi]} → {provinceResults[pi].Length} path(s)"
-    );
-});
+Parallel.For(
+    0,
+    provinceNames.Length,
+    pi =>
+    {
+        var indices = provinceIndexSets[provinceNames[pi]];
+        provinceResults[pi] = TracePaths((px, py) => indices.Contains(colorMap[px, py]));
+        Console.WriteLine(
+            $"  [{pi + 1}/{provinceNames.Length}] {provinceNames[pi]} → {provinceResults[pi].Length} path(s)"
+        );
+    }
+);
 
 // ── Collect results into provinceMap (sequential — no contention) ─────────────
 var provinceMap = new Dictionary<string, List<object>>();
@@ -392,16 +427,19 @@ for (int ci = 0; ci < locationColors.Count; ci++)
 
     templateLookup.TryGetValue(locName, out var tmpl);
 
-    provinceMap[province].Add(new
-    {
-        name         = locName,
-        color        = hex,
-        topography   = tmpl?.Topography,
-        climate      = tmpl?.Climate,
-        vegetation   = tmpl?.Vegetation,
-        raw_material = tmpl?.RawMaterial,
-        paths        = locationResults[ci],
-    });
+    provinceMap[province]
+        .Add(
+            new
+            {
+                name = locName,
+                color = hex,
+                topography = tmpl?.Topography,
+                climate = tmpl?.Climate,
+                vegetation = tmpl?.Vegetation,
+                raw_material = tmpl?.RawMaterial,
+                paths = locationResults[ci],
+            }
+        );
 }
 
 // ── Step 8: Write JSON ────────────────────────────────────────────────────────
@@ -412,12 +450,17 @@ var output = new
 {
     area = "svealand_area",
     provinces = provinceNames
-        .Select((pName, pi) => new
-        {
-            name      = pName,
-            paths     = provinceResults[pi],
-            locations = provinceMap.TryGetValue(pName, out var locs) ? locs : new List<object>(),
-        })
+        .Select(
+            (pName, pi) =>
+                new
+                {
+                    name = pName,
+                    paths = provinceResults[pi],
+                    locations = provinceMap.TryGetValue(pName, out var locs)
+                        ? locs
+                        : new List<object>(),
+                }
+        )
         .ToList(),
 };
 

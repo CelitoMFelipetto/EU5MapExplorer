@@ -2,6 +2,7 @@ import { Component, effect, inject, OnDestroy } from '@angular/core';
 import * as L from 'leaflet';
 import { LocationDto } from '../models/location.dto';
 import { MAP_PANES } from '../map-panes';
+import { MapMode } from '../map-mode';
 import { LOCATION_DTO } from '../map-tokens';
 import { MapHighlightService } from '../map-highlight.service';
 import { MapService } from '../map.service';
@@ -18,12 +19,21 @@ const highlightStyle: L.PolylineOptions = {
   fillOpacity: 0.7,
 };
 
-const lakeColor = '#11a9ec';
+function tooltipContent(location: LocationDto, mode: MapMode): string {
+  if (mode === 'locations') return location.id;
+  const value = location[mode];
+  return value ?? '—';
+}
 
 /**
  * Headless component — no template. Receives its LocationDto via DI at
  * construction time (provided by ProvinceComponent via a custom Injector) and
  * renders the Leaflet polygon immediately in the constructor.
+ *
+ * Three independent effects keep the polygon in sync:
+ *  - color effect   → updates fillColor when the map mode changes (all locations)
+ *  - tooltip effect → updates tooltip content when the map mode changes (non-lakes)
+ *  - highlight effect → updates stroke style and shows/hides tooltip on hover (non-lakes)
  */
 @Component({
   selector: 'app-location',
@@ -32,32 +42,44 @@ const lakeColor = '#11a9ec';
 })
 export class LocationComponent implements OnDestroy {
   private readonly polygon: L.Polygon;
-  private readonly location: LocationDto;
 
   constructor() {
-    this.location      = inject(LOCATION_DTO);
+    const location     = inject(LOCATION_DTO);
     const mapService   = inject(MapService);
     const mapHighlight = inject(MapHighlightService);
 
-    this.polygon = L.polygon(this.location.paths, {
+    this.polygon = L.polygon(location.paths, {
       ...regularStyle,
-      fillColor: this.fillColor(),
+      fillColor: mapService.getLocationColor(location),
       pane: MAP_PANES.locations.name,
     });
 
-    if (this.location.topography !== 'lakes') {
-      const locationId = this.location.id;
+    // ── Color mode effect (all locations, including lakes) ────────────────────
+    // Only touches fillColor — never conflicts with the highlight effect.
+    effect(() => {
+      this.polygon.setStyle({ fillColor: mapService.getLocationColor(location) });
+    });
+
+    // ── Highlight + tooltip effects (non-lakes only) ──────────────────────────
+    if (location.topography !== 'lakes') {
+      const locationId = location.id;
       const map        = mapService.map!;
-      const tooltip    = L.tooltip({ sticky: false }).setContent(locationId);
+      const tooltip    = L.tooltip({ sticky: false });
+
+      // Update tooltip text whenever the mode changes so hovering always
+      // shows the value relevant to the currently selected layer.
+      effect(() => {
+        tooltip.setContent(tooltipContent(location, mapService.mapMode()));
+      });
 
       this.polygon.on({
         mouseover: () => mapHighlight.highlight(locationId),
         mouseout:  () => mapHighlight.clear(),
       });
 
-      // Both highlight style and tooltip are driven solely by the signal.
-      // If mouseout is ever missed, the next mouseover on any location changes
-      // the signal, this effect re-runs, and the stale tooltip is removed.
+      // Both highlight style and tooltip visibility are driven solely by the
+      // signal. If mouseout is ever missed, the next mouseover on any location
+      // changes the signal, this effect re-runs, and the stale tooltip is removed.
       effect(() => {
         if (mapHighlight.highlightedLocationId() === locationId) {
           this.polygon.setStyle({ ...highlightStyle });
@@ -75,9 +97,5 @@ export class LocationComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.polygon.remove();
-  }
-
-  private fillColor(): string {
-    return this.location.topography === 'lakes' ? lakeColor : this.location.color;
   }
 }
