@@ -46,77 +46,77 @@ export const COLOR_LEGENDS: Record<Exclude<MapMode, 'locations'>, Record<string,
   raw_material: {
     alum: '#7b322d',  // Alum
     amber: '#ffbf00',  // Amber
-    chili: '#bf1919',  // Chili
+    chili: '#bf3519',  // Chili
     clay: '#be4646',  // Clay
-    cloves: '#bf1a19',  // Cloves
+    cloves: '#35bf19',  // Cloves
     coal: '#1f1f1f',  // Coal
     cocoa: '#733617',  // Cocoa
     coffee: '#382617',  // Coffee
-    copper: '#d95757',  // Copper
+    copper: '#d98257',  // Copper
     cotton: '#85ad99',  // Cotton
     dyes: '#a12b80',  // Dyes
     elephants: '#d26a2f',  // Elephants
-    fiber_crops: '#4d100f',  // Fiber Crops
-    gems: '#ba0100',  // Gems
+    fiber_crops: '#0f4d20',  // Fiber Crops
+    gems: '#00ba76',  // Gems
     gold: '#ffd630',  // Gold
     horses: '#9f8170',  // Horses
     incense: '#e3c978',  // Incense
     iron: '#333333',  // Iron
     ivory: '#bfb3a1',  // Ivory
-    lead: '#e6302e',  // Lead
+    lead: '#322ee6',  // Lead
     lumber: '#737817',  // Lumber
     marble: '#f7e6f7',  // Marble
     medicaments: '#ff7f7f',  // Medicaments
     mercury: '#e03b50',  // Mercury
     pearls: '#eae0c8',  // Pearls
     pepper: '#adc0c0',  // Pepper
-    saffron: '#bf1b1b',  // Saffron
+    saffron: '#bf571b',  // Saffron
     salt: '#ffffff',  // Salt
     saltpeter: '#964b00',  // Saltpeter
     sand: '#f2f26f',  // Sand
     silk: '#b81a1a',  // Silk
     silver: '#c0c0c0',  // Silver
-    stone: '#4d3d3d',  // Stone
+    stone: '#3d434d',  // Stone
     sugar: '#bdf2ad',  // Sugar
     tea: '#125417',  // Tea
     tin: '#4d4d4d',  // Tin
     tobacco: '#548f61',  // Tobacco
     wine: '#5c2147',  // Wine
-    beeswax: '#cc2525',  // Beeswax
-    fish: '#783231',  // Fish
+    beeswax: '#cc8c25',  // Beeswax
+    fish: '#317874',  // Fish
     fruit: '#f23f3f',  // Fruit
     fur: '#8a664f',  // Fur
-    legumes: '#962e2d',  // Legumes
-    livestock: '#940b0a',  // Livestock
-    maize: '#cc1514',  // Maize
+    legumes: '#2d967d',  // Legumes
+    livestock: '#60940a',  // Livestock
+    maize: '#cc8f14',  // Maize
     olives: '#486600',  // Olives
     potatoes: '#ffae6a',  // Potatoes
-    rice: '#804e4e',  // Rice
-    sturdy_grains: '#662929',  // Sturdy Grains
-    wheat: '#d41413',  // Wheat
-    wild_game: '#de5d5d',  // Wild Game
-    wool: '#998a8a',  // Wool
-    beer: '#400c0b',  // Beer
-    books: '#a1201f',  // Books
-    cannon: '#ff9a99',  // Cannon
+    rice: '#64804e',  // Rice
+    sturdy_grains: '#cccccc',  // Sturdy Grains
+    wheat: '#d4cc13',  // Wheat
+    wild_game: '#ded15d',  // Wild Game
+    wool: '#8a9999',  // Wool
+    beer: '#160b40',  // Beer
+    books: '#a11f65',  // Books
+    cannon: '#de99ff',  // Cannon
     cloth: '#db3030',  // Cloth
     fine_cloth: '#b7a99b',  // Fine Cloth
-    firearms: '#ffb4b3',  // Firearms
+    firearms: '#ffb3ea',  // Firearms
     furniture: '#82c0c0',  // Furniture
     glass: '#009973',  // Glass
-    jewelry: '#ff0d0d',  // Jewelry
+    jewelry: '#ff880d',  // Jewelry
     lacquerware: '#980018',  // Lacquerware
-    leather: '#261919',  // Leather
-    liquor: '#330b0a',  // Liquor
-    masonry: '#401313',  // Masonry
+    leather: '#261d19',  // Leather
+    liquor: '#330a23',  // Liquor
+    masonry: '#402613',  // Masonry
     naval_supplies: '#1c2b66',  // Naval Supplies
     paper: '#e6dbb5',  // Paper
     porcelain: '#2e91cc',  // Porcelain
     pottery: '#a0c0c0',  // Pottery
     slaves: '#000000',  // Slaves
-    steel: '#332424',  // Steel
+    steel: '#242a33',  // Steel
     tar: '#292929',  // Tar
-    tools: '#140e0e',  // Tools
+    tools: '#0e1014',  // Tools
     weaponry: '#caccce',  // Weaponry
   },
 };

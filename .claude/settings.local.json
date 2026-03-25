@@ -34,7 +34,9 @@
       "Bash(\"/c/Users/celit/.dotnet/tools/dotnet-script.exe\" --help)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(cmd.exe /c \"gh pr create --title \"\"feat: dynamic PDXScript map parsing for svealand_area\"\" --body \"\"## Summary\\\\n\\\\n- Adds **Tamar.Clausewitz 0.5.1** as a NuGet dependency to extract-map.csx, replacing the inline parser — requires the script to run under .NET 10 \\(dotnet-script reinstalled accordingly\\)\\\\n- Parses definitions.txt using the Clausewitz DOM API \\(.Clauses for nested blocks, .Tokens for bare location identifiers\\) to extract the full svealand_area province → location hierarchy\\\\n- Parses all named_locations/*.txt files using .Bindings to build a dynamic location → RGB hex colour lookup, replacing the previous hardcoded colour array\\\\n- Switches the image pixel scan from a linear colour search to an O\\(1\\) Dictionary lookup\\\\n- Replaces the SVG output with a structured svealand_area.json containing the full hierarchy: area → provinces → locations → { name, color, paths[] }\\\\n\\\\n## Test plan\\\\n\\\\n- [ ] Run dotnet-script Scripts/extract-map.csx from the EU5MapExplorer.Api directory\\\\n- [ ] Verify Step 1 console output lists 7 provinces with correct location counts\\\\n- [ ] Verify Step 2 loads colour entries without errors\\\\n- [ ] Verify Scripts/svealand_area.json is produced with all provinces, locations, colours and traced paths populated\\\\n\\\\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\"\" 2>&1\")",
-      "WebFetch(domain:eu5.paradoxwikis.com)"
+      "WebFetch(domain:eu5.paradoxwikis.com)",
+      "WebFetch(domain:snyk.io)",
+      "WebFetch(domain:www.npmjs.com)"
     ]
   }
 }
