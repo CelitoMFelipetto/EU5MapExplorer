@@ -40,9 +40,12 @@ export class MapService {
     this._map = value;
 
     if (value) {
-      // Persist zoom whenever the user finishes a zoom gesture.
+      // Persist zoom whenever the user finishes a zoom gesture, and keep
+      // the reactive zoom signal in sync so effects can respond to it.
       value.on('zoomend', () => {
-        sessionStorage.setItem(SESSION_KEYS.zoom, value.getZoom().toString());
+        const z = value.getZoom();
+        sessionStorage.setItem(SESSION_KEYS.zoom, z.toString());
+        this.zoom.set(z);
       });
 
       // Persist pan center whenever the user finishes a pan gesture.
@@ -70,6 +73,9 @@ export class MapService {
       return null;
     }
   }
+
+  /** Current zoom level — updated reactively via the zoomend Leaflet event. */
+  readonly zoom = signal<number>(0);
 
   /** Currently selected map display mode — initialised from sessionStorage. */
   readonly mapMode = signal<MapMode>(readSessionMode());
@@ -152,14 +158,16 @@ export class MapService {
 
       provinceDto.locations = apiProvince.locations.map(loc => {
         const locationDto: LocationDto = {
-          id:           loc.name,
-          color:        `#${loc.color}`,
-          topography:   loc.topography,
-          climate:      loc.climate,
-          vegetation:   loc.vegetation,
-          raw_material: loc.raw_material,
-          paths:        loc.paths.map(path => path.map(flip)),
-          province:     provinceDto,
+          id:            loc.name,
+          color:         `#${loc.color}`,
+          topography:    loc.topography,
+          climate:       loc.climate,
+          vegetation:    loc.vegetation,
+          raw_material:  loc.raw_material,
+          rank:          loc.rank,
+          city_position: loc.city_position ?? null,
+          paths:         loc.paths.map(path => path.map(flip)),
+          province:      provinceDto,
         };
         return locationDto;
       });

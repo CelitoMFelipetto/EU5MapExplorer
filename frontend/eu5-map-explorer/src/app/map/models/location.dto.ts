@@ -4,6 +4,15 @@ export type PathCoordinates = [number, number];
 
 export type PolygonPath = PathCoordinates[] | PathCoordinates[][] | PathCoordinates[][][];
 
+export interface CityPosition {
+  /** X coordinate in game world space (east-west). */
+  x: number;
+  /** Y coordinate in game world space (north-south; corresponds to Z in the 3D game file). */
+  y: number;
+}
+
+export type LocationRank = 'city' | 'town' | 'rural_settlement';
+
 export interface LocationDto {
   /** Location name (e.g. 'stockholm'). */
   id: string;
@@ -14,6 +23,17 @@ export interface LocationDto {
   climate: string;
   vegetation: string | null;
   raw_material: string | null;
+  /**
+   * Settlement rank.
+   * 'city' and 'town' are explicitly set in the game files;
+   * 'rural_settlement' is the default for anything not listed.
+   */
+  rank: LocationRank;
+  /**
+   * City placement position in game world space.
+   * Null for locations that have no city object (e.g. lakes, wastelands).
+   */
+  city_position: CityPosition | null;
   /** Leaflet-ready polygon paths — coordinates already converted to [lat, lng]. */
   paths: PolygonPath;
   /** The province this location belongs to. */
@@ -46,6 +66,13 @@ export interface ApiLocationDto {
   climate: string;
   vegetation: string | null;
   raw_material: string | null;
+  /** Settlement rank — defaults to 'rural_settlement' when absent from the game file. */
+  rank: LocationRank;
+  /**
+   * City placement position in game world space.
+   * Null for locations with no city object (e.g. lakes, wastelands).
+   */
+  city_position: CityPosition | null;
   /**
    * Boundary polygon paths in raw image pixel space.
    * paths[pathIndex][pointIndex] = [x, y]

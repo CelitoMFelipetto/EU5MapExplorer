@@ -3175,6 +3175,11 @@
           "climate": "continental",
           "vegetation": "grasslands",
           "raw_material": "clay",
+          "city_position": {
+            "x": 8529.5,
+            "y": 1248.5
+          },
+          "rank": "town",
           "paths": [
             [
               [
@@ -4327,6 +4332,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "fish",
+          "city_position": {
+            "x": 8548.5,
+            "y": 1204.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -4861,6 +4871,11 @@
           "climate": "continental",
           "vegetation": "grasslands",
           "raw_material": "millet",
+          "city_position": {
+            "x": 8496.5,
+            "y": 1232.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -5485,6 +5500,11 @@
           "climate": "continental",
           "vegetation": "farmland",
           "raw_material": "wheat",
+          "city_position": {
+            "x": 8516.5,
+            "y": 1212.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -5901,6 +5921,11 @@
           "climate": "continental",
           "vegetation": "grasslands",
           "raw_material": "fish",
+          "city_position": {
+            "x": 8612.5,
+            "y": 1195.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -6801,6 +6826,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "fish",
+          "city_position": {
+            "x": 8513.5,
+            "y": 1174.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -7389,6 +7419,11 @@
           "climate": "continental",
           "vegetation": "grasslands",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8484.5,
+            "y": 1196.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -9714,6 +9749,11 @@
           "climate": "continental",
           "vegetation": "grasslands",
           "raw_material": "fish",
+          "city_position": {
+            "x": 8492.5,
+            "y": 1291.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -10270,6 +10310,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "marble",
+          "city_position": {
+            "x": 8450.5,
+            "y": 1308.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -10622,6 +10667,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "sand",
+          "city_position": {
+            "x": 8461.5,
+            "y": 1261.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -11256,6 +11306,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8426.5,
+            "y": 1274.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -11932,6 +11987,11 @@
           "climate": "continental",
           "vegetation": "grasslands",
           "raw_material": "clay",
+          "city_position": {
+            "x": 8517.5,
+            "y": 1260.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -12790,6 +12850,8 @@
           "climate": "continental",
           "vegetation": null,
           "raw_material": null,
+          "city_position": null,
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -14450,6 +14512,8 @@
           "climate": "continental",
           "vegetation": null,
           "raw_material": null,
+          "city_position": null,
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -16213,6 +16277,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8429.5,
+            "y": 1242.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -16785,6 +16854,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8455.5,
+            "y": 1233.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -17237,6 +17311,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "iron",
+          "city_position": {
+            "x": 8399.5,
+            "y": 1237.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -17581,6 +17660,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8448.5,
+            "y": 1210.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -18073,6 +18157,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "iron",
+          "city_position": {
+            "x": 8411.5,
+            "y": 1212.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -18437,6 +18526,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "copper",
+          "city_position": {
+            "x": 8367.5,
+            "y": 1216.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -18745,6 +18839,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "iron",
+          "city_position": {
+            "x": 8364.5,
+            "y": 1240.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -19756,6 +19855,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "livestock",
+          "city_position": {
+            "x": 8383.5,
+            "y": 1263.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -20096,6 +20200,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8366.5,
+            "y": 1280.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -20556,6 +20665,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "medicaments",
+          "city_position": {
+            "x": 8399.5,
+            "y": 1280.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -22865,6 +22979,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8346.5,
+            "y": 1253.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -23269,6 +23388,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "wild_game",
+          "city_position": {
+            "x": 8307.5,
+            "y": 1244.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -23851,6 +23975,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "fish",
+          "city_position": {
+            "x": 8278.5,
+            "y": 1267.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -24343,6 +24472,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "beeswax",
+          "city_position": {
+            "x": 8243.5,
+            "y": 1238.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -24759,6 +24893,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8268.5,
+            "y": 1237.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -25259,6 +25398,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8310.5,
+            "y": 1204.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -25919,6 +26063,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "wild_game",
+          "city_position": {
+            "x": 8275.5,
+            "y": 1157.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -26411,6 +26560,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8281.5,
+            "y": 1203.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -26879,6 +27033,8 @@
           "climate": "continental",
           "vegetation": null,
           "raw_material": null,
+          "city_position": null,
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -31330,6 +31486,11 @@
           "climate": "arctic",
           "vegetation": "woods",
           "raw_material": "iron",
+          "city_position": {
+            "x": 8438.5,
+            "y": 1197.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -31606,6 +31767,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "copper",
+          "city_position": {
+            "x": 8419.5,
+            "y": 1155.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -32034,6 +32200,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8379.5,
+            "y": 1159.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -32742,6 +32913,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "iron",
+          "city_position": {
+            "x": 8354.5,
+            "y": 1188.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -33302,6 +33478,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8300.5,
+            "y": 1142.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -34130,6 +34311,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "wild_game",
+          "city_position": {
+            "x": 8330.5,
+            "y": 1117.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -34816,6 +35002,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8278.5,
+            "y": 1078.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -35576,6 +35767,11 @@
           "climate": "arctic",
           "vegetation": "woods",
           "raw_material": "horses",
+          "city_position": {
+            "x": 8416.5,
+            "y": 1181.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -35956,6 +36152,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "wild_game",
+          "city_position": {
+            "x": 8378.5,
+            "y": 1106.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -36688,6 +36889,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8394.5,
+            "y": 1201.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -37052,6 +37258,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8390.5,
+            "y": 1173.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -37536,6 +37747,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8346.5,
+            "y": 1169.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -37940,6 +38156,8 @@
           "climate": "continental",
           "vegetation": null,
           "raw_material": null,
+          "city_position": null,
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -39231,6 +39449,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "fish",
+          "city_position": {
+            "x": 8481.5,
+            "y": 1162.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -39563,6 +39786,11 @@
           "climate": "continental",
           "vegetation": "forest",
           "raw_material": "beeswax",
+          "city_position": {
+            "x": 8455.5,
+            "y": 1192.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -39935,6 +40163,11 @@
           "climate": "continental",
           "vegetation": "woods",
           "raw_material": "fish",
+          "city_position": {
+            "x": 8476.5,
+            "y": 1144.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [
@@ -40283,6 +40516,11 @@
           "climate": "arctic",
           "vegetation": "forest",
           "raw_material": "lumber",
+          "city_position": {
+            "x": 8443.5,
+            "y": 1153.5
+          },
+          "rank": "rural_settlement",
           "paths": [
             [
               [

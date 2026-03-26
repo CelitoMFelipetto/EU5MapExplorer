@@ -3,7 +3,9 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Tamar.Clausewitz;
@@ -416,6 +418,104 @@ Parallel.For(
     }
 );
 
+// ── Load city positions ───────────────────────────────────────────────────────
+// Each instance block looks like:
+//   {
+//       id=stockholm
+//       position={ 8529.500000 0.000000 6943.500000 }   <- x  altitude  z(→y)
+//       rotation={ ... }
+//       scale={ ... }
+//   }
+// We only want the id, x (1st value) and z (3rd value — becomes y in 2D).
+
+Console.WriteLine("\nLoading city positions...");
+
+var cityLocatorsPath = Path.Combine(
+    dataPath,
+    "in_game",
+    "gfx",
+    "map",
+    "map_objects",
+    "generated_map_object_locators_city.txt"
+);
+
+var cityPositions = new Dictionary<string, (double x, double y)>(StringComparer.OrdinalIgnoreCase);
+
+if (!File.Exists(cityLocatorsPath))
+{
+    Console.WriteLine(
+        "  [WARN] City locator file not found — city_position will be null for all locations."
+    );
+}
+else
+{
+    // The regex captures:
+    //   Group 1 → id (word chars)
+    //   Group 2 → x  (first float in position block)
+    //   Group 3 → y  (third float — z in 3D space, ignored: second float is altitude)
+    var instanceRx = new Regex(
+        @"\{\s*id=(\w+)\s+position=\{\s*([\d.]+)\s+[\d.]+\s+([\d.]+)\s*\}",
+        RegexOptions.Singleline
+    );
+
+    var text = File.ReadAllText(cityLocatorsPath);
+    foreach (Match m in instanceRx.Matches(text))
+    {
+        var id = m.Groups[1].Value;
+        var gameX = double.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+        var gameZ = double.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
+        // The game world has Z=0 at the southern edge (image bottom) and Z=imageHeight
+        // at the northern edge (image top). The PNG has Y=0 at the top, so we flip:
+        //   pixel_y = imageHeight - game_z
+        // This puts the city position in the same pixel-space as the traced polygon paths.
+        var pixelY = height - gameZ;
+        cityPositions[id] = (gameX, pixelY);
+    }
+
+    Console.WriteLine($"  → {cityPositions.Count} city positions loaded.");
+}
+
+// ── Load location ranks ───────────────────────────────────────────────────────
+// File: setup/start/07_cities_and_buildings.txt
+// Structure:  locations = { stockholm = { rank = town  ... }  london = { rank = city  ... } }
+// Rank values: "city" | "town" — anything absent defaults to "rural_settlement".
+
+Console.WriteLine("\nLoading location ranks...");
+
+var citiesPath = Path.Combine(
+    dataPath,
+    "main_menu",
+    "setup",
+    "start",
+    "07_cities_and_buildings.txt"
+);
+
+var rankLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+if (!File.Exists(citiesPath))
+{
+    Console.WriteLine(
+        "  [WARN] Cities file not found — all ranks will default to 'rural_settlement'."
+    );
+}
+else
+{
+    var citiesRoot = Interpreter.InterpretText(File.ReadAllText(citiesPath));
+    var locationsClause = citiesRoot.FindClauseDepthFirst("locations");
+    if (locationsClause != null)
+    {
+        foreach (var locClause in locationsClause.Clauses)
+        {
+            if (string.IsNullOrEmpty(locClause.Name))
+                continue;
+            var rankBinding = locClause.Bindings.FirstOrDefault(b => b.Name == "rank");
+            if (!string.IsNullOrEmpty(rankBinding?.Value))
+                rankLookup[locClause.Name] = rankBinding.Value;
+        }
+    }
+    Console.WriteLine($"  → {rankLookup.Count} location ranks loaded.");
+}
+
 // ── Collect results into provinceMap (sequential — no contention) ─────────────
 var provinceMap = new Dictionary<string, List<object>>();
 
@@ -427,6 +527,12 @@ for (int ci = 0; ci < locationColors.Count; ci++)
 
     templateLookup.TryGetValue(locName, out var tmpl);
 
+    var cityPos = cityPositions.TryGetValue(locName, out var cp)
+        ? new { x = cp.x, y = cp.y }
+        : null as object;
+
+    var rank = rankLookup.TryGetValue(locName, out var r) ? r : "rural_settlement";
+
     provinceMap[province]
         .Add(
             new
@@ -437,6 +543,8 @@ for (int ci = 0; ci < locationColors.Count; ci++)
                 climate = tmpl?.Climate,
                 vegetation = tmpl?.Vegetation,
                 raw_material = tmpl?.RawMaterial,
+                city_position = cityPos,
+                rank,
                 paths = locationResults[ci],
             }
         );

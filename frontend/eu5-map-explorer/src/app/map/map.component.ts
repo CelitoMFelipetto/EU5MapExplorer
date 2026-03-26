@@ -224,8 +224,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.map.fitBounds(bounds);
       }
 
-      // Seed the UI badges with whatever view is now active.
-      this.zoomLevel.set(this.map.getZoom().toFixed(2));
+      // Seed the UI badges and the reactive zoom signal with whatever view is
+      // now active. The zoomend listener covers subsequent zoom gestures; this
+      // call ensures the signal is correct from the very first render.
+      const initialZoom = this.map.getZoom();
+      this.zoomLevel.set(initialZoom.toFixed(2));
+      this.mapService.zoom.set(initialZoom);
       const c = this.map.getCenter();
       this.panPosition.set(`${Math.round(c.lng)}, ${Math.round(c.lat)}`);
 
