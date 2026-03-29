@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   Component,
   ComponentRef,
+  DestroyRef,
   ElementRef,
   inject,
   Injector,
@@ -10,12 +11,14 @@ import {
   ViewChild,
   ViewContainerRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import * as L from 'leaflet';
 import { MapService } from './map.service';
 import { ProvinceComponent } from './province/province.component';
 import { MAP_PANES } from './map-panes';
 import { PROVINCE_DTO } from './map-tokens';
 import { MAP_MODES, MapMode } from './map-mode';
+import { ProvinceDto } from './models/location.dto';
 
 @Component({
   selector: 'app-map',
@@ -152,6 +155,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   locationHost!: ViewContainerRef;
 
   protected readonly mapService = inject(MapService);
+  private readonly destroyRef = inject(DestroyRef);
   private map?: L.Map;
   private provinceRefs: ComponentRef<ProvinceComponent>[] = [];
 
@@ -164,86 +168,89 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
-    this.mapService.getMapData().subscribe(({ svgWidth, svgHeight, provinces }) => {
-      // Build a minimal SVG shell — LocationComponents fill it with <path> elements.
-      const ns = 'http://www.w3.org/2000/svg';
-      const svgEl = document.createElementNS(ns, 'svg') as SVGSVGElement;
-      svgEl.setAttribute('width', String(svgWidth));
-      svgEl.setAttribute('height', String(svgHeight));
-      svgEl.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
-
-      // The padding translate matches the 2px pad baked into the SVG coordinates.
-      const group = document.createElementNS(ns, 'g') as SVGGElement;
-      group.setAttribute('transform', 'translate(2,2)');
-      svgEl.appendChild(group);
-
-      this.map = L.map(this.mapEl.nativeElement, {
-        crs: L.CRS.Simple,
-        minZoom: -5,
-        maxZoom: 5,
-        zoomSnap: 0.25,
-        attributionControl: false,
+    // Subscribe BEFORE startRadialLoad so the first emission is never missed.
+    this.mapService.areaLoaded$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ svgWidth, svgHeight, provinces }) => {
+        if (!this.map) {
+          this.initMap(svgWidth, svgHeight);
+        }
+        this.renderProvinces(provinces);
       });
 
-      // Read the saved view BEFORE assigning the map to the service.
-      // Once the map is assigned, the service attaches moveend/zoomend listeners
-      // that write to sessionStorage — fitBounds would overwrite the saved values
-      // if we read them any later.
-      const savedView = this.mapService.getSavedView();
+    this.mapService.startRadialLoad('svealand_area');
+  }
 
-      // Publish the map instance so child components can inject it via MapService.
-      // This also attaches the sessionStorage persistence listeners.
-      this.mapService.map = this.map;
+  private initMap(svgWidth: number, svgHeight: number): void {
+    // Build a minimal SVG shell — LocationComponents fill it with <path> elements.
+    const ns = 'http://www.w3.org/2000/svg';
+    const svgEl = document.createElementNS(ns, 'svg') as SVGSVGElement;
+    svgEl.setAttribute('width', String(svgWidth));
+    svgEl.setAttribute('height', String(svgHeight));
+    svgEl.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
 
-      const updatePan = () => {
-        const c = this.map!.getCenter();
-        // CRS.Simple: lng = x, lat = y
-        this.panPosition.set(`${Math.round(c.lng)}, ${Math.round(c.lat)}`);
-      };
+    // The padding translate matches the 2px pad baked into the SVG coordinates.
+    const group = document.createElementNS(ns, 'g') as SVGGElement;
+    group.setAttribute('transform', 'translate(2,2)');
+    svgEl.appendChild(group);
 
-      this.map.on('zoomend', () => {
-        this.zoomLevel.set(this.map!.getZoom().toFixed(2));
-      });
-
-      this.map.on('move', updatePan);
-
-      // Register custom panes — must be done before any layer uses them.
-      for (const { name, zIndex } of Object.values(MAP_PANES)) {
-        const pane = this.map.createPane(name);
-        pane.style.zIndex = String(zIndex);
-      }
-
-      // CRS.Simple: lat increases upward → SW=[0,0], NE=[h,w].
-      const bounds: L.LatLngBoundsExpression = [[0, 0], [svgHeight, svgWidth]];
-      L.svgOverlay(svgEl, bounds).addTo(this.map);
-
-      // Restore the saved view if one exists; otherwise fit the whole map.
-      if (savedView) {
-        this.map.setView(savedView.center, savedView.zoom, { animate: false });
-      } else {
-        this.map.fitBounds(bounds);
-      }
-
-      // Seed the UI badges and the reactive zoom signal with whatever view is
-      // now active. The zoomend listener covers subsequent zoom gestures; this
-      // call ensures the signal is correct from the very first render.
-      const initialZoom = this.map.getZoom();
-      this.zoomLevel.set(initialZoom.toFixed(2));
-      this.mapService.zoom.set(initialZoom);
-      const c = this.map.getCenter();
-      this.panPosition.set(`${Math.round(c.lng)}, ${Math.round(c.lat)}`);
-
-      // Spawn one ProvinceComponent per province, providing the DTO directly
-      // into the component's injector so it can be resolved in the constructor.
-      for (const province of provinces) {
-        const injector = Injector.create({
-          providers: [{ provide: PROVINCE_DTO, useValue: province }],
-          parent: this.locationHost.injector,
-        });
-        const ref = this.locationHost.createComponent(ProvinceComponent, { injector });
-        this.provinceRefs.push(ref);
-      }
+    this.map = L.map(this.mapEl.nativeElement, {
+      crs: L.CRS.Simple,
+      minZoom: -3,
+      maxZoom: 5,
+      zoomSnap: 0.25,
+      attributionControl: false,
     });
+
+    // Read the saved view BEFORE assigning the map to the service.
+    const savedView = this.mapService.getSavedView();
+
+    // Publish the map instance — attaches sessionStorage persistence listeners.
+    this.mapService.map = this.map;
+
+    const updatePan = () => {
+      const c = this.map!.getCenter();
+      this.panPosition.set(`${Math.round(c.lng)}, ${Math.round(c.lat)}`);
+    };
+
+    this.map.on('zoomend', () => {
+      this.zoomLevel.set(this.map!.getZoom().toFixed(2));
+    });
+
+    this.map.on('move', updatePan);
+
+    // Register custom panes — must be done before any layer uses them.
+    for (const { name, zIndex } of Object.values(MAP_PANES)) {
+      const pane = this.map.createPane(name);
+      pane.style.zIndex = String(zIndex);
+    }
+
+    // CRS.Simple: lat increases upward → SW=[0,0], NE=[h,w].
+    const bounds: L.LatLngBoundsExpression = [[0, 0], [svgHeight, svgWidth]];
+    L.svgOverlay(svgEl, bounds).addTo(this.map);
+
+    if (savedView) {
+      this.map.setView(savedView.center, savedView.zoom, { animate: false });
+    } else {
+      this.map.fitBounds(bounds);
+    }
+
+    const initialZoom = this.map.getZoom();
+    this.zoomLevel.set(initialZoom.toFixed(2));
+    this.mapService.zoom.set(initialZoom);
+    const c = this.map.getCenter();
+    this.panPosition.set(`${Math.round(c.lng)}, ${Math.round(c.lat)}`);
+  }
+
+  private renderProvinces(provinces: ProvinceDto[]): void {
+    for (const province of provinces) {
+      const injector = Injector.create({
+        providers: [{ provide: PROVINCE_DTO, useValue: province }],
+        parent: this.locationHost.injector,
+      });
+      const ref = this.locationHost.createComponent(ProvinceComponent, { injector });
+      this.provinceRefs.push(ref);
+    }
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────

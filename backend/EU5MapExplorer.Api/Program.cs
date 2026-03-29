@@ -1,9 +1,13 @@
+using EU5MapExplorer.Api.Data;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddDbContext<AppDbContext>(opts =>
+    opts.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
 var app = builder.Build();
 
@@ -23,16 +27,54 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapGet("/api/map", () =>
+app.MapGet("/api/map", async (
+    string? area,
+    string? version,
+    AppDbContext db,
+    IConfiguration config) =>
 {
-    var repoRoot  = GetRepoRoot(app.Environment.ContentRootPath);
-    var jsonPath  = Path.Combine(repoRoot, "backend", "EU5MapExplorer.Api", "Scripts", "svealand_area.json");
+    var areaName    = area    ?? "svealand_area";
+    var gameVersion = version ?? config["EU5:Version"] ?? "1.1.10";
 
-    if (!File.Exists(jsonPath))
-        return Results.NotFound(new { error = "svealand_area.json not found. Run the extract-map script first." });
+    var areaEntity = await db.Areas
+        .Include(a => a.Provinces)
+            .ThenInclude(p => p.Locations)
+        .Where(a => a.Name == areaName
+                 && a.GameVersionAreas.Any(gva => gva.GameVersion.Version == gameVersion))
+        .FirstOrDefaultAsync();
 
-    var json = File.ReadAllText(jsonPath);
-    return Results.Content(json, "application/json");
+    if (areaEntity is null)
+        return Results.NotFound(new
+        {
+            error = $"Area '{areaName}' not found for version '{gameVersion}'. Run the extract-map script first."
+        });
+
+    var response = new
+    {
+        area      = areaEntity.Name,
+        neighbors = areaEntity.Neighbors,
+        provinces = areaEntity.Provinces.Select(p => new
+        {
+            name      = p.Name,
+            paths     = p.Paths,
+            locations = p.Locations.Select(loc => new
+            {
+                name         = loc.Name,
+                color        = loc.Color,
+                topography   = loc.Topography,
+                climate      = loc.Climate,
+                vegetation   = loc.Vegetation,
+                raw_material = loc.RawMaterial,
+                rank         = loc.Rank,
+                city_position = (loc.CityX.HasValue && loc.CityY.HasValue)
+                    ? new { x = loc.CityX.Value, y = loc.CityY.Value }
+                    : null as object,
+                paths = loc.Paths,
+            }).ToArray(),
+        }).ToArray(),
+    };
+
+    return Results.Ok(response);
 })
 .WithName("GetMap")
 .WithOpenApi();
@@ -127,29 +169,4 @@ app.MapGet("/api/saves/inspect", (string? path, int? previewBytes, bool? include
 .WithName("InspectEu5Save")
 .WithOpenApi();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
-
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

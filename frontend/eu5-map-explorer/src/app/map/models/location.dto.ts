@@ -50,9 +50,11 @@ export interface ProvinceDto {
 }
 
 export interface MapDataDto {
+  area: string;
   svgWidth: number;
   svgHeight: number;
   provinces: ProvinceDto[];
+  neighborAreas: string[];
 }
 
 // ── Raw shapes returned by GET /api/map ───────────────────────────────────────
@@ -89,5 +91,6 @@ export interface ApiProvinceDto {
 
 export interface ApiMapResponse {
   area: string;
+  neighbors: string[];
   provinces: ApiProvinceDto[];
 }

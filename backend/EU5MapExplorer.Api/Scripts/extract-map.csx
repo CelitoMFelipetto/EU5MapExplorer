@@ -1,11 +1,14 @@
 #r "nuget: SixLabors.ImageSharp, 3.1.5"
 #r "nuget: Tamar.Clausewitz, 0.5.1"
+#r "nuget: Npgsql, 8.0.6"
 #nullable enable
 
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Npgsql;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using Tamar.Clausewitz;
@@ -24,37 +27,79 @@ if (projectDir == null)
     return;
 }
 
-// ── Read EU5:DataPath from appsettings ───────────────────────────────────────
+// ── Read EU5:DataPath, EU5:Version and ConnectionStrings:Default ──────────────
 
 string? dataPath = null;
+string? gameVersion = null;
+string? connectionString = null;
+
 foreach (var filename in new[] { "appsettings.Development.json", "appsettings.json" })
 {
     var fullPath = Path.Combine(projectDir, filename);
     if (!File.Exists(fullPath))
         continue;
     using var doc = JsonDocument.Parse(File.ReadAllText(fullPath));
-    if (
-        doc.RootElement.TryGetProperty("EU5", out var eu5)
+
+    if (dataPath == null
+        && doc.RootElement.TryGetProperty("EU5", out var eu5)
         && eu5.TryGetProperty("DataPath", out var dp)
-        && !string.IsNullOrWhiteSpace(dp.GetString())
-    )
+        && !string.IsNullOrWhiteSpace(dp.GetString()))
     {
         dataPath = dp.GetString();
-        break;
+    }
+
+    if (gameVersion == null
+        && doc.RootElement.TryGetProperty("EU5", out var eu5v)
+        && eu5v.TryGetProperty("Version", out var ver)
+        && !string.IsNullOrWhiteSpace(ver.GetString()))
+    {
+        gameVersion = ver.GetString();
+    }
+
+    if (connectionString == null
+        && doc.RootElement.TryGetProperty("ConnectionStrings", out var cs)
+        && cs.TryGetProperty("Default", out var csDefault)
+        && !string.IsNullOrWhiteSpace(csDefault.GetString()))
+    {
+        connectionString = csDefault.GetString();
     }
 }
 
 if (dataPath == null)
 {
-    Console.Error.WriteLine(
-        "Error: EU5:DataPath is not configured in appsettings.Development.json."
-    );
+    Console.Error.WriteLine("Error: EU5:DataPath is not configured in appsettings.Development.json.");
     return;
 }
 
-// ── Step 1: Parse definitions.txt → svealand_area provinces + locations ───────
+gameVersion ??= "1.1.10";
+Console.WriteLine($"Game version: {gameVersion}");
 
-Console.WriteLine("Step 1: Parsing definitions.txt...");
+if (connectionString == null)
+{
+    Console.Error.WriteLine("Error: ConnectionStrings:Default is not configured.");
+    return;
+}
+
+// ── Parse --subcontinent argument ─────────────────────────────────────────────
+
+string? subcontinentFilter = null;
+for (int i = 0; i < Args.Count - 1; i++)
+{
+    if (Args[i] == "--subcontinent")
+    {
+        subcontinentFilter = Args[i + 1];
+        break;
+    }
+}
+
+if (subcontinentFilter != null)
+    Console.WriteLine($"Filter: sub-continent = {subcontinentFilter}");
+else
+    Console.WriteLine("Filter: none (all sub-continents)");
+
+// ── Step 1: Parse definitions.txt → ALL areas → provinces + locations ─────────
+
+Console.WriteLine("\nStep 1: Parsing definitions.txt...");
 
 var definitionsPath = Path.Combine(dataPath, "in_game", "map_data", "definitions.txt");
 if (!File.Exists(definitionsPath))
@@ -64,34 +109,82 @@ if (!File.Exists(definitionsPath))
 }
 
 var definitionsRoot = Interpreter.InterpretText(File.ReadAllText(definitionsPath));
-var svealandClause = definitionsRoot.FindClauseDepthFirst("svealand_area");
-if (svealandClause == null)
+
+// allAreas: areaName → { provinceName → [locationNames] }
+var allAreas = new Dictionary<string, Dictionary<string, List<string>>>(StringComparer.OrdinalIgnoreCase);
+// areaAncestry: areaName → (continent, subContinent, region) — filled while descending
+var areaAncestry = new Dictionary<string, (string? Continent, string? SubContinent, string? Region)>(StringComparer.OrdinalIgnoreCase);
+
+// The hierarchy is: continent → sub-continent → region → area → province → locations.
+// We queue (clause, continent, subContinent, region) and fill ancestors as we descend.
+var bfsClauseQueue = new Queue<(dynamic Clause, string? Continent, string? SubContinent, string? Region)>();
+foreach (var c in definitionsRoot.Clauses.Cast<dynamic>())
+    bfsClauseQueue.Enqueue((c, null, null, null));
+
+while (bfsClauseQueue.Count > 0)
 {
-    Console.Error.WriteLine("Error: svealand_area not found in definitions.txt.");
-    return;
+    var (candidate, continent, subContinent, region) = bfsClauseQueue.Dequeue();
+    if (string.IsNullOrEmpty((string?)candidate.Name)) continue;
+
+    // Check if any direct child has tokens — if so, candidate is an area clause
+    bool isAreaClause = false;
+    foreach (var child in candidate.Clauses)
+    {
+        var childTokens = child.Tokens;
+        bool hasTokens = false;
+        foreach (var _ in childTokens) { hasTokens = true; break; }
+        if (hasTokens) { isAreaClause = true; break; }
+    }
+
+    if (isAreaClause)
+    {
+        var provinces = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var provinceClause in candidate.Clauses)
+        {
+            var provinceName = (string?)provinceClause.Name;
+            if (string.IsNullOrEmpty(provinceName)) continue;
+
+            var locations = ((IEnumerable<dynamic>)provinceClause.Tokens)
+                .Select(t => (string?)t.Value)
+                .Where(v => !string.IsNullOrEmpty(v))
+                .Cast<string>()
+                .ToList();
+
+            provinces[provinceName] = locations;
+        }
+        var areaName = (string)candidate.Name;
+        allAreas[areaName] = provinces;
+        areaAncestry[areaName] = (continent, subContinent, region);
+    }
+    else
+    {
+        // Not an area yet — shift the current clause name into the next ancestry slot
+        var name = (string)candidate.Name;
+        string? newCont = continent, newSub = subContinent, newReg = region;
+        if (continent == null)       newCont = name;
+        else if (subContinent == null) newSub = name;
+        else                           newReg = name;
+
+        foreach (var child in candidate.Clauses)
+            bfsClauseQueue.Enqueue((child, newCont, newSub, newReg));
+    }
 }
 
-// provinceName → ordered list of location names
-// Province blocks contain bare identifiers: uppland_province = { stockholm norrtalje ... }
-// Tamar.Clausewitz: sub-blocks are in .Clauses, bare scalar tokens are in .Tokens
-var svealandProvinces = new Dictionary<string, List<string>>();
-foreach (var provinceClause in svealandClause.Clauses)
-{
-    var provinceName = provinceClause.Name;
-    if (string.IsNullOrEmpty(provinceName))
-        continue;
+Console.WriteLine($"  → {allAreas.Count} areas found.");
 
-    var locations = provinceClause
-        .Tokens.Select(t => t.Value)
-        .Where(v => !string.IsNullOrEmpty(v))
+if (subcontinentFilter != null)
+{
+    var before = allAreas.Count;
+    var toRemove = allAreas.Keys
+        .Where(k => !areaAncestry.TryGetValue(k, out var anc)
+                    || !string.Equals(anc.SubContinent, subcontinentFilter, StringComparison.OrdinalIgnoreCase))
         .ToList();
-
-    svealandProvinces[provinceName] = locations!;
+    foreach (var k in toRemove) { allAreas.Remove(k); areaAncestry.Remove(k); }
+    Console.WriteLine($"  → {allAreas.Count} areas kept after filtering (was {before}).");
 }
 
-Console.WriteLine($"  → {svealandProvinces.Count} provinces:");
-foreach (var (prov, locs) in svealandProvinces)
-    Console.WriteLine($"    {prov}: {locs.Count} locations");
+foreach (var (aName, provs) in allAreas)
+    Console.WriteLine($"    {aName}: {provs.Count} provinces");
 
 // ── Step 2: Parse named_locations/*.txt → location name → RGB hex ─────────────
 
@@ -104,13 +197,11 @@ if (!Directory.Exists(namedLocationsDir))
     return;
 }
 
-// location_name → normalized 6-char hex string (leading zeros restored)
 var colorLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
 foreach (var file in Directory.GetFiles(namedLocationsDir, "*.txt").OrderBy(f => f))
 {
     var locRoot = Interpreter.InterpretText(File.ReadAllText(file));
-    // Each line is a Binding: stockholm = dda910
     foreach (var binding in locRoot.Bindings)
     {
         if (!string.IsNullOrEmpty(binding.Name) && !string.IsNullOrEmpty(binding.Value))
@@ -131,88 +222,63 @@ if (!File.Exists(templatesPath))
     return;
 }
 
-// location name → { topography, climate, vegetation?, raw_material? }
-record LocationTemplate(string Topography, string Climate, string? Vegetation, string? RawMaterial);
-
 var templateLookup = new Dictionary<string, LocationTemplate>(StringComparer.OrdinalIgnoreCase);
-
 var templatesRoot = Interpreter.InterpretText(File.ReadAllText(templatesPath));
+
 foreach (var locClause in templatesRoot.Clauses)
 {
     if (string.IsNullOrEmpty(locClause.Name))
         continue;
 
-    string? topography = null;
-    string? climate = null;
-    string? vegetation = null;
-    string? rawMaterial = null;
-
+    string? topography = null, climate = null, vegetation = null, rawMaterial = null;
     foreach (var b in locClause.Bindings)
     {
         switch (b.Name)
         {
-            case "topography":
-                topography = b.Value;
-                break;
-            case "climate":
-                climate = b.Value;
-                break;
-            case "vegetation":
-                vegetation = b.Value;
-                break;
-            case "raw_material":
-                rawMaterial = b.Value;
-                break;
+            case "topography":  topography  = b.Value; break;
+            case "climate":     climate     = b.Value; break;
+            case "vegetation":  vegetation  = b.Value; break;
+            case "raw_material": rawMaterial = b.Value; break;
         }
     }
-
     if (topography != null && climate != null)
-        templateLookup[locClause.Name] = new LocationTemplate(
-            topography,
-            climate,
-            vegetation,
-            rawMaterial
-        );
+        templateLookup[locClause.Name] = new LocationTemplate(topography, climate, vegetation, rawMaterial);
 }
 
 Console.WriteLine($"  → {templateLookup.Count} location templates loaded.");
 
-// ── Step 4: Match svealand locations to their colors ─────────────────────────
+// ── Step 4: Build global location color list (all areas) ──────────────────────
 
-// Flat list keeping province context: (province, location, r, g, b, hex)
-var locationColors =
-    new List<(string province, string location, byte r, byte g, byte b, string hex)>();
+Console.WriteLine("\nStep 4: Building global location color list...");
 
-foreach (var (province, locations) in svealandProvinces)
+// (areaName, provinceName, locationName, r, g, b, hex)
+var locationColors = new List<(string area, string province, string location, byte r, byte g, byte b, string hex)>();
+
+foreach (var (aName, provinces) in allAreas)
 {
-    foreach (var loc in locations)
+    foreach (var (pName, locs) in provinces)
     {
-        if (!colorLookup.TryGetValue(loc, out var hex))
+        foreach (var loc in locs)
         {
-            Console.WriteLine($"  [WARN] No color found for location '{loc}' — skipping.");
-            continue;
+            if (!colorLookup.TryGetValue(loc, out var hex))
+            {
+                Console.WriteLine($"  [WARN] No color for '{loc}' in {aName}/{pName} — skipping.");
+                continue;
+            }
+            var r = Convert.ToByte(hex.Substring(0, 2), 16);
+            var g = Convert.ToByte(hex.Substring(2, 2), 16);
+            var b = Convert.ToByte(hex.Substring(4, 2), 16);
+            locationColors.Add((aName, pName, loc, r, g, b, hex));
         }
-        var r = Convert.ToByte(hex.Substring(0, 2), 16);
-        var g = Convert.ToByte(hex.Substring(2, 2), 16);
-        var b = Convert.ToByte(hex.Substring(4, 2), 16);
-        locationColors.Add((province, loc, r, g, b, hex));
     }
 }
 
-Console.WriteLine($"\n  → {locationColors.Count} locations with colors.");
+Console.WriteLine($"  → {locationColors.Count} locations total.");
 
-// Build province → set of location indices (used later for province path tracing).
-// Lakes are excluded so the province outline hugs only land pixels.
-var provinceIndexSets = new Dictionary<string, HashSet<int>>(StringComparer.OrdinalIgnoreCase);
-for (int ci = 0; ci < locationColors.Count; ci++)
-{
-    var (prov, locName, _, _, _, _) = locationColors[ci];
-    if (templateLookup.TryGetValue(locName, out var tmpl) && tmpl.Topography == "lakes")
-        continue;
-    if (!provinceIndexSets.ContainsKey(prov))
-        provinceIndexSets[prov] = new HashSet<int>();
-    provinceIndexSets[prov].Add(ci);
-}
+// Build fast (R,G,B) → location index dictionary
+var colorIndex = new Dictionary<(byte, byte, byte), int>();
+for (int i = 0; i < locationColors.Count; i++)
+    colorIndex.TryAdd((locationColors[i].r, locationColors[i].g, locationColors[i].b), i);
 
 // ── Step 5: Load locations.png and map every pixel to a location index ────────
 
@@ -231,12 +297,6 @@ int width = image.Width;
 int height = image.Height;
 Console.WriteLine($"  Size: {width} x {height} px");
 
-// Build fast (R,G,B) → location index dictionary
-var colorIndex = new Dictionary<(byte, byte, byte), int>();
-for (int i = 0; i < locationColors.Count; i++)
-    colorIndex.TryAdd((locationColors[i].r, locationColors[i].g, locationColors[i].b), i);
-
-// Single-pass scan
 var colorMap = new int[width, height];
 for (int y = 0; y < height; y++)
 for (int x = 0; x < width; x++)
@@ -259,28 +319,70 @@ image.ProcessPixelRows(accessor =>
 image.Dispose();
 Console.WriteLine("  Scan complete.");
 
+// ── Step 5b: Detect area neighbours ──────────────────────────────────────────
+
+Console.WriteLine("\nStep 5b: Detecting area neighbours...");
+
+var areaNeighbourPairs = new HashSet<(string, string)>();
+
+for (int y = 0; y < height; y++)
+for (int x = 0; x < width - 1; x++)
+{
+    var i = colorMap[x, y];
+    var j = colorMap[x + 1, y];
+    if (i < 0 || j < 0 || i == j) continue;
+    var aI = locationColors[i].area;
+    var aJ = locationColors[j].area;
+    if (aI == aJ) continue;
+    var pair = string.Compare(aI, aJ, StringComparison.OrdinalIgnoreCase) < 0 ? (aI, aJ) : (aJ, aI);
+    areaNeighbourPairs.Add(pair);
+}
+
+for (int y = 0; y < height - 1; y++)
+for (int x = 0; x < width; x++)
+{
+    var i = colorMap[x, y];
+    var j = colorMap[x, y + 1];
+    if (i < 0 || j < 0 || i == j) continue;
+    var aI = locationColors[i].area;
+    var aJ = locationColors[j].area;
+    if (aI == aJ) continue;
+    var pair = string.Compare(aI, aJ, StringComparison.OrdinalIgnoreCase) < 0 ? (aI, aJ) : (aJ, aI);
+    areaNeighbourPairs.Add(pair);
+}
+
+// areaName → sorted list of neighbour names
+var areaNeighboursMap = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+foreach (var (a, b) in areaNeighbourPairs)
+{
+    if (!areaNeighboursMap.TryGetValue(a, out var listA)) areaNeighboursMap[a] = listA = new();
+    if (!areaNeighboursMap.TryGetValue(b, out var listB)) areaNeighboursMap[b] = listB = new();
+    listA.Add(b);
+    listB.Add(a);
+}
+
+foreach (var list in areaNeighboursMap.Values)
+    list.Sort(StringComparer.OrdinalIgnoreCase);
+
+Console.WriteLine($"  → {areaNeighbourPairs.Count} neighbour pairs found.");
+
 // ── Shared tracing helpers ────────────────────────────────────────────────────
 
-// Right-hand-rule turn order (clockwise winding) — read-only, safe to share across threads
 var cwOrder = new Dictionary<(int, int), (int, int)[]>
 {
-    [(0, -1)] = new[] { (1, 0), (0, -1), (-1, 0) }, // arrived N → try E, N, W
-    [(1, 0)] = new[] { (0, 1), (1, 0), (0, -1) }, // arrived E → try S, E, N
-    [(0, 1)] = new[] { (-1, 0), (0, 1), (1, 0) }, // arrived S → try W, S, E
-    [(-1, 0)] = new[] { (0, -1), (-1, 0), (0, 1) }, // arrived W → try N, W, S
+    [(0, -1)] = new[] { (1, 0), (0, -1), (-1, 0) },
+    [(1, 0)]  = new[] { (0, 1), (1, 0), (0, -1) },
+    [(0, 1)]  = new[] { (-1, 0), (0, 1), (1, 0) },
+    [(-1, 0)] = new[] { (0, -1), (-1, 0), (0, 1) },
 };
 
-// Shared edge-graph tracer: isMember(x,y) returns true when the pixel at (x,y)
-// belongs to the shape being traced.
 int[][][] TracePaths(Func<int, int, bool> isMember)
 {
     var adj = new Dictionary<(int, int), HashSet<(int, int)>>();
     void Link((int, int) a, (int, int) b)
     {
-        if (!adj.ContainsKey(a))
-            adj[a] = new HashSet<(int, int)>();
-        if (!adj.ContainsKey(b))
-            adj[b] = new HashSet<(int, int)>();
+        if (!adj.ContainsKey(a)) adj[a] = new HashSet<(int, int)>();
+        if (!adj.ContainsKey(b)) adj[b] = new HashSet<(int, int)>();
         adj[a].Add(b);
         adj[b].Add(a);
     }
@@ -288,33 +390,18 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
     for (int py = 0; py < height; py++)
     for (int px = 0; px < width; px++)
     {
-        if (!isMember(px, py))
-            continue;
-        if (py == 0 || !isMember(px, py - 1))
-            Link((px, py), (px + 1, py));
-        if (py == height - 1 || !isMember(px, py + 1))
-            Link((px, py + 1), (px + 1, py + 1));
-        if (px == 0 || !isMember(px - 1, py))
-            Link((px, py), (px, py + 1));
-        if (px == width - 1 || !isMember(px + 1, py))
-            Link((px + 1, py), (px + 1, py + 1));
+        if (!isMember(px, py)) continue;
+        if (py == 0 || !isMember(px, py - 1))           Link((px, py), (px + 1, py));
+        if (py == height - 1 || !isMember(px, py + 1))  Link((px, py + 1), (px + 1, py + 1));
+        if (px == 0 || !isMember(px - 1, py))           Link((px, py), (px, py + 1));
+        if (px == width - 1 || !isMember(px + 1, py))   Link((px + 1, py), (px + 1, py + 1));
     }
 
     var remaining = adj.ToDictionary(kvp => kvp.Key, kvp => new HashSet<(int, int)>(kvp.Value));
     void UseEdge((int, int) a, (int, int) b)
     {
-        if (remaining.TryGetValue(a, out var sa))
-        {
-            sa.Remove(b);
-            if (sa.Count == 0)
-                remaining.Remove(a);
-        }
-        if (remaining.TryGetValue(b, out var sb))
-        {
-            sb.Remove(a);
-            if (sb.Count == 0)
-                remaining.Remove(b);
-        }
+        if (remaining.TryGetValue(a, out var sa)) { sa.Remove(b); if (sa.Count == 0) remaining.Remove(a); }
+        if (remaining.TryGetValue(b, out var sb)) { sb.Remove(a); if (sb.Count == 0) remaining.Remove(b); }
     }
 
     var tracedPaths = new List<int[][]>();
@@ -331,9 +418,7 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
         while (curr != start)
         {
             pts.Add(curr);
-            if (!remaining.ContainsKey(curr))
-                break;
-
+            if (!remaining.ContainsKey(curr)) break;
             var arrDir = (curr.Item1 - prev.Item1, curr.Item2 - prev.Item2);
             (int, int) next = default;
             bool found = false;
@@ -347,8 +432,7 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
                     break;
                 }
             }
-            if (!found)
-                break;
+            if (!found) break;
             UseEdge(curr, next);
             prev = curr;
             curr = next;
@@ -357,11 +441,7 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
         var simplified = new List<int[]>();
         for (int i = 0; i < pts.Count; i++)
         {
-            if (i == 0 || i == pts.Count - 1)
-            {
-                simplified.Add(new[] { pts[i].Item1, pts[i].Item2 });
-                continue;
-            }
+            if (i == 0 || i == pts.Count - 1) { simplified.Add(new[] { pts[i].Item1, pts[i].Item2 }); continue; }
             var (ax, ay) = pts[i - 1];
             var (bx, by) = pts[i];
             var (cx, cy) = pts[i + 1];
@@ -373,130 +453,48 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
     return tracedPaths.ToArray();
 }
 
-// ── Step 6: Trace boundary paths for every location (parallelised) ────────────
-
-Console.WriteLine(
-    $"\nStep 6: Tracing location paths ({locationColors.Count} locations, {Environment.ProcessorCount} logical cores)..."
-);
-
-// Pre-allocated results array — each slot written by exactly one thread, no contention
-var locationResults = new int[locationColors.Count][][][];
-
-Parallel.For(
-    0,
-    locationColors.Count,
-    ci =>
-    {
-        locationResults[ci] = TracePaths((px, py) => colorMap[px, py] == ci);
-        Console.WriteLine(
-            $"  [{ci + 1}/{locationColors.Count}] {locationColors[ci].location} ({locationColors[ci].hex}) → {locationResults[ci].Length} path(s)"
-        );
-    }
-);
-
-// ── Step 7: Trace boundary paths for every province (parallelised) ────────────
-
-var provinceNames = svealandProvinces.Keys.ToArray();
-
-Console.WriteLine(
-    $"\nStep 7: Tracing province paths ({provinceNames.Length} provinces, {Environment.ProcessorCount} logical cores)..."
-);
-
-// Pre-allocated results array — each slot written by exactly one thread, no contention
-var provinceResults = new int[provinceNames.Length][][][];
-
-Parallel.For(
-    0,
-    provinceNames.Length,
-    pi =>
-    {
-        var indices = provinceIndexSets[provinceNames[pi]];
-        provinceResults[pi] = TracePaths((px, py) => indices.Contains(colorMap[px, py]));
-        Console.WriteLine(
-            $"  [{pi + 1}/{provinceNames.Length}] {provinceNames[pi]} → {provinceResults[pi].Length} path(s)"
-        );
-    }
-);
-
 // ── Load city positions ───────────────────────────────────────────────────────
-// Each instance block looks like:
-//   {
-//       id=stockholm
-//       position={ 8529.500000 0.000000 6943.500000 }   <- x  altitude  z(→y)
-//       rotation={ ... }
-//       scale={ ... }
-//   }
-// We only want the id, x (1st value) and z (3rd value — becomes y in 2D).
 
 Console.WriteLine("\nLoading city positions...");
 
 var cityLocatorsPath = Path.Combine(
-    dataPath,
-    "in_game",
-    "gfx",
-    "map",
-    "map_objects",
-    "generated_map_object_locators_city.txt"
-);
+    dataPath, "in_game", "gfx", "map", "map_objects",
+    "generated_map_object_locators_city.txt");
 
 var cityPositions = new Dictionary<string, (double x, double y)>(StringComparer.OrdinalIgnoreCase);
 
 if (!File.Exists(cityLocatorsPath))
 {
-    Console.WriteLine(
-        "  [WARN] City locator file not found — city_position will be null for all locations."
-    );
+    Console.WriteLine("  [WARN] City locator file not found — city_position will be null for all locations.");
 }
 else
 {
-    // The regex captures:
-    //   Group 1 → id (word chars)
-    //   Group 2 → x  (first float in position block)
-    //   Group 3 → y  (third float — z in 3D space, ignored: second float is altitude)
     var instanceRx = new Regex(
         @"\{\s*id=(\w+)\s+position=\{\s*([\d.]+)\s+[\d.]+\s+([\d.]+)\s*\}",
-        RegexOptions.Singleline
-    );
+        RegexOptions.Singleline);
 
-    var text = File.ReadAllText(cityLocatorsPath);
-    foreach (Match m in instanceRx.Matches(text))
+    foreach (Match m in instanceRx.Matches(File.ReadAllText(cityLocatorsPath)))
     {
-        var id = m.Groups[1].Value;
+        var id    = m.Groups[1].Value;
         var gameX = double.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
         var gameZ = double.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
-        // The game world has Z=0 at the southern edge (image bottom) and Z=imageHeight
-        // at the northern edge (image top). The PNG has Y=0 at the top, so we flip:
-        //   pixel_y = imageHeight - game_z
-        // This puts the city position in the same pixel-space as the traced polygon paths.
-        var pixelY = height - gameZ;
-        cityPositions[id] = (gameX, pixelY);
+        cityPositions[id] = (gameX, height - gameZ);
     }
-
     Console.WriteLine($"  → {cityPositions.Count} city positions loaded.");
 }
 
 // ── Load location ranks ───────────────────────────────────────────────────────
-// File: setup/start/07_cities_and_buildings.txt
-// Structure:  locations = { stockholm = { rank = town  ... }  london = { rank = city  ... } }
-// Rank values: "city" | "town" — anything absent defaults to "rural_settlement".
 
 Console.WriteLine("\nLoading location ranks...");
 
 var citiesPath = Path.Combine(
-    dataPath,
-    "main_menu",
-    "setup",
-    "start",
-    "07_cities_and_buildings.txt"
-);
+    dataPath, "main_menu", "setup", "start", "07_cities_and_buildings.txt");
 
 var rankLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
 if (!File.Exists(citiesPath))
 {
-    Console.WriteLine(
-        "  [WARN] Cities file not found — all ranks will default to 'rural_settlement'."
-    );
+    Console.WriteLine("  [WARN] Cities file not found — all ranks will default to 'rural_settlement'.");
 }
 else
 {
@@ -506,8 +504,7 @@ else
     {
         foreach (var locClause in locationsClause.Clauses)
         {
-            if (string.IsNullOrEmpty(locClause.Name))
-                continue;
+            if (string.IsNullOrEmpty(locClause.Name)) continue;
             var rankBinding = locClause.Bindings.FirstOrDefault(b => b.Name == "rank");
             if (!string.IsNullOrEmpty(rankBinding?.Value))
                 rankLookup[locClause.Name] = rankBinding.Value;
@@ -516,66 +513,289 @@ else
     Console.WriteLine($"  → {rankLookup.Count} location ranks loaded.");
 }
 
-// ── Collect results into provinceMap (sequential — no contention) ─────────────
-var provinceMap = new Dictionary<string, List<object>>();
+// ── Process each area: trace paths → compute hash ─────────────────────────────
 
+Console.WriteLine($"\nStep 6: Tracing paths for all areas ({allAreas.Count} areas)...");
+
+// Per-location index sets per area (for province path tracing), excluding lakes
+var areaProvinceSets = new Dictionary<string, Dictionary<string, HashSet<int>>>(StringComparer.OrdinalIgnoreCase);
 for (int ci = 0; ci < locationColors.Count; ci++)
 {
-    var (province, locName, _, _, _, hex) = locationColors[ci];
-    if (!provinceMap.ContainsKey(province))
-        provinceMap[province] = new List<object>();
-
-    templateLookup.TryGetValue(locName, out var tmpl);
-
-    var cityPos = cityPositions.TryGetValue(locName, out var cp)
-        ? new { x = cp.x, y = cp.y }
-        : null as object;
-
-    var rank = rankLookup.TryGetValue(locName, out var r) ? r : "rural_settlement";
-
-    provinceMap[province]
-        .Add(
-            new
-            {
-                name = locName,
-                color = hex,
-                topography = tmpl?.Topography,
-                climate = tmpl?.Climate,
-                vegetation = tmpl?.Vegetation,
-                raw_material = tmpl?.RawMaterial,
-                city_position = cityPos,
-                rank,
-                paths = locationResults[ci],
-            }
-        );
+    var (aName, pName, locName, _, _, _, _) = locationColors[ci];
+    if (templateLookup.TryGetValue(locName, out var tmpl) && tmpl.Topography == "lakes") continue;
+    if (!areaProvinceSets.TryGetValue(aName, out var provSets))
+        areaProvinceSets[aName] = provSets = new(StringComparer.OrdinalIgnoreCase);
+    if (!provSets.TryGetValue(pName, out var idxSet))
+        provSets[pName] = idxSet = new HashSet<int>();
+    idxSet.Add(ci);
 }
 
-// ── Step 8: Write JSON ────────────────────────────────────────────────────────
-
-Console.WriteLine("\nStep 8: Writing JSON...");
-
-var output = new
+// Per-location paths (parallelised across all locations globally)
+Console.WriteLine($"  Tracing {locationColors.Count} location paths...");
+var locationResults = new int[locationColors.Count][][][];
+Parallel.For(0, locationColors.Count, ci =>
 {
-    area = "svealand_area",
-    provinces = provinceNames
-        .Select(
-            (pName, pi) =>
-                new
-                {
-                    name = pName,
-                    paths = provinceResults[pi],
-                    locations = provinceMap.TryGetValue(pName, out var locs)
-                        ? locs
-                        : new List<object>(),
-                }
-        )
-        .ToList(),
-};
+    locationResults[ci] = TracePaths((px, py) => colorMap[px, py] == ci);
+});
+Console.WriteLine("  Location paths done.");
 
-var jsonOutputPath = Path.Combine(projectDir, "Scripts", "svealand_area.json");
-File.WriteAllText(
-    jsonOutputPath,
-    JsonSerializer.Serialize(output, new JsonSerializerOptions { WriteIndented = true })
+// Build per-area location index sets for province tracing (need area → province → indices)
+var processedAreas = new List<AreaData>();
+
+foreach (var (aName, provMap) in allAreas)
+{
+    var provinceNames = provMap.Keys.ToArray();
+    Console.WriteLine($"  Tracing {provinceNames.Length} province paths for {aName}...");
+
+    var provinceResults = new int[provinceNames.Length][][][];
+    var provSets = areaProvinceSets.TryGetValue(aName, out var ps) ? ps : new();
+
+    Parallel.For(0, provinceNames.Length, pi =>
+    {
+        var pName = provinceNames[pi];
+        var indices = provSets.TryGetValue(pName, out var idxSet) ? idxSet : new HashSet<int>();
+        provinceResults[pi] = TracePaths((px, py) => indices.Contains(colorMap[px, py]));
+    });
+
+    // Build province data
+    var provincesData = new Dictionary<string, (int[][][] ProvincePaths, List<LocationData> Locations)>(StringComparer.OrdinalIgnoreCase);
+
+    for (int pi = 0; pi < provinceNames.Length; pi++)
+    {
+        var pName = provinceNames[pi];
+        var locationDataList = new List<LocationData>();
+
+        foreach (var locName in provMap[pName])
+        {
+            // Find location index
+            var ci = locationColors.FindIndex(l =>
+                string.Equals(l.area, aName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(l.location, locName, StringComparison.OrdinalIgnoreCase));
+
+            if (ci < 0) continue; // was skipped (no color)
+
+            var hex = locationColors[ci].hex;
+            templateLookup.TryGetValue(locName, out var tmpl);
+            var rank = rankLookup.TryGetValue(locName, out var r) ? r : "rural_settlement";
+            double? cx = null, cy = null;
+            if (cityPositions.TryGetValue(locName, out var cp)) { cx = cp.x; cy = cp.y; }
+
+            locationDataList.Add(new LocationData(
+                locName, hex,
+                tmpl?.Topography ?? "unknown", tmpl?.Climate ?? "unknown",
+                tmpl?.Vegetation, tmpl?.RawMaterial,
+                rank, cx, cy,
+                locationResults[ci]));
+        }
+
+        provincesData[pName] = (provinceResults[pi], locationDataList);
+    }
+
+    var neighbours = areaNeighboursMap.TryGetValue(aName, out var nb) ? nb.ToArray() : Array.Empty<string>();
+    var (areaCont, areaSub, areaReg) = areaAncestry.TryGetValue(aName, out var anc) ? anc : (null, null, null);
+    processedAreas.Add(new AreaData(aName, areaCont, areaSub, areaReg, neighbours, provincesData));
+}
+
+Console.WriteLine("  Path tracing complete.");
+
+// ── Step 7: Compute content hash per area ─────────────────────────────────────
+
+Console.WriteLine("\nStep 7: Computing content hashes...");
+
+string ComputeAreaHash(AreaData area)
+{
+    // Hash = SHA-256 over the deterministic JSON of neighbours + sorted provinces + sorted locations
+    var canonical = new
+    {
+        neighbors = area.Neighbours.OrderBy(n => n).ToArray(),
+        provinces = area.Provinces
+            .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+            .Select(kvp => new
+            {
+                name = kvp.Key,
+                paths = kvp.Value.ProvincePaths,
+                locations = kvp.Value.Locations
+                    .OrderBy(l => l.Name, StringComparer.Ordinal)
+                    .Select(l => new
+                    {
+                        l.Name, l.Color, l.Topography, l.Climate,
+                        l.Vegetation, l.RawMaterial, l.Rank,
+                        l.CityX, l.CityY, l.Paths
+                    }).ToArray()
+            }).ToArray()
+    };
+
+    var json = JsonSerializer.Serialize(canonical);
+    var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json));
+    return Convert.ToHexString(hash).ToLowerInvariant();
+}
+
+var areaHashes = processedAreas.ToDictionary(a => a.Name, ComputeAreaHash, StringComparer.OrdinalIgnoreCase);
+Console.WriteLine($"  → {areaHashes.Count} hashes computed.");
+
+// ── Step 8: Write to DB ───────────────────────────────────────────────────────
+
+Console.WriteLine("\nStep 8: Writing to database...");
+
+var conn = new NpgsqlConnection(connectionString);
+conn.Open();
+
+// Upsert game_version
+int gameVersionId;
+using (var cmd = new NpgsqlCommand(
+    "INSERT INTO game_versions (\"Version\", \"ExtractedAt\") " +
+    "VALUES (@version, NOW() AT TIME ZONE 'UTC') " +
+    "ON CONFLICT (\"Version\") DO UPDATE SET \"ExtractedAt\" = EXCLUDED.\"ExtractedAt\" " +
+    "RETURNING \"Id\"", conn))
+{
+    cmd.Parameters.AddWithValue("version", gameVersion);
+    gameVersionId = (int)cmd.ExecuteScalar()!;
+}
+Console.WriteLine($"  game_version id={gameVersionId} ({gameVersion})");
+
+// Remove any existing game_version_areas links for this version (to allow re-run)
+using (var cmd = new NpgsqlCommand(
+    "DELETE FROM game_version_areas WHERE \"GameVersionId\" = @versionId", conn))
+{
+    cmd.Parameters.AddWithValue("versionId", gameVersionId);
+    cmd.ExecuteNonQuery();
+}
+
+int areasInserted = 0, areasReused = 0;
+
+foreach (var area in processedAreas)
+{
+    var hash = areaHashes[area.Name];
+    var neighboursJson = JsonSerializer.Serialize(area.Neighbours);
+
+    using var tx = conn.BeginTransaction();
+
+    try
+    {
+        // Check for existing area with same name + hash
+        int? existingAreaId = null;
+        using (var cmd = new NpgsqlCommand(
+            "SELECT \"Id\" FROM areas WHERE \"Name\" = @name AND \"ContentHash\" = @hash", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("name", area.Name);
+            cmd.Parameters.AddWithValue("hash", hash);
+            var result = cmd.ExecuteScalar();
+            if (result != null) existingAreaId = (int)result;
+        }
+
+        int areaId;
+        if (existingAreaId.HasValue)
+        {
+            areaId = existingAreaId.Value;
+            areasReused++;
+            Console.WriteLine($"  [REUSE] {area.Name} (id={areaId})");
+        }
+        else
+        {
+            // Insert new area row
+            using (var cmd = new NpgsqlCommand(
+                "INSERT INTO areas (\"Name\", \"ContentHash\", \"Continent\", \"SubContinent\", \"Region\", \"Neighbors\") " +
+                "VALUES (@name, @hash, @continent, @subContinent, @region, @neighbors::jsonb) " +
+                "RETURNING \"Id\"", conn, tx))
+            {
+                cmd.Parameters.AddWithValue("name", area.Name);
+                cmd.Parameters.AddWithValue("hash", hash);
+                cmd.Parameters.AddWithValue("continent", (object?)area.Continent ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("subContinent", (object?)area.SubContinent ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("region", (object?)area.Region ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("neighbors", neighboursJson);
+                areaId = (int)cmd.ExecuteScalar()!;
+            }
+
+            // Insert provinces and locations
+            foreach (var (provinceName, (provincePaths, locationDataList)) in area.Provinces)
+            {
+                int provinceId;
+                using (var cmd = new NpgsqlCommand(
+                    "INSERT INTO provinces (\"AreaId\", \"Name\", \"Paths\") " +
+                    "VALUES (@areaId, @name, @paths::jsonb) " +
+                    "RETURNING \"Id\"", conn, tx))
+                {
+                    cmd.Parameters.AddWithValue("areaId", areaId);
+                    cmd.Parameters.AddWithValue("name", provinceName);
+                    cmd.Parameters.AddWithValue("paths", JsonSerializer.Serialize(provincePaths));
+                    provinceId = (int)cmd.ExecuteScalar()!;
+                }
+
+                foreach (var loc in locationDataList)
+                {
+                    using var cmd = new NpgsqlCommand(
+                        "INSERT INTO locations " +
+                        "(\"ProvinceId\",\"Name\",\"Color\",\"Topography\",\"Climate\",\"Vegetation\"," +
+                        "\"RawMaterial\",\"Rank\",\"CityX\",\"CityY\",\"Paths\") " +
+                        "VALUES " +
+                        "(@provinceId,@name,@color,@topography,@climate,@vegetation," +
+                        "@rawMaterial,@rank,@cityX,@cityY,@paths::jsonb)", conn, tx);
+
+                    cmd.Parameters.AddWithValue("provinceId", provinceId);
+                    cmd.Parameters.AddWithValue("name", loc.Name);
+                    cmd.Parameters.AddWithValue("color", loc.Color);
+                    cmd.Parameters.AddWithValue("topography", loc.Topography);
+                    cmd.Parameters.AddWithValue("climate", loc.Climate);
+                    cmd.Parameters.AddWithValue("vegetation", (object?)loc.Vegetation ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("rawMaterial", (object?)loc.RawMaterial ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("rank", loc.Rank);
+                    cmd.Parameters.AddWithValue("cityX", (object?)loc.CityX ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("cityY", (object?)loc.CityY ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("paths", JsonSerializer.Serialize(loc.Paths));
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            areasInserted++;
+            Console.WriteLine($"  [NEW]   {area.Name} (id={areaId}, {area.Provinces.Count} provinces)");
+        }
+
+        // Link this area to the game version
+        using (var cmd = new NpgsqlCommand(
+            "INSERT INTO game_version_areas (\"GameVersionId\", \"AreaId\") " +
+            "VALUES (@versionId, @areaId) " +
+            "ON CONFLICT DO NOTHING", conn, tx))
+        {
+            cmd.Parameters.AddWithValue("versionId", gameVersionId);
+            cmd.Parameters.AddWithValue("areaId", areaId);
+            cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+    catch (Exception ex)
+    {
+        tx.Rollback();
+        Console.Error.WriteLine($"  [ERROR] {area.Name}: {ex.Message}");
+        throw;
+    }
+}
+
+Console.WriteLine($"\nAll done. {areasInserted} areas inserted, {areasReused} areas reused.");
+
+// ── Type declarations (must appear after all top-level statements in .csx) ────
+
+record AreaData(
+    string Name,
+    string? Continent,
+    string? SubContinent,
+    string? Region,
+    string[] Neighbours,
+    Dictionary<string, (int[][][] ProvincePaths, List<LocationData> Locations)> Provinces
 );
 
-Console.WriteLine($"\nAll done. JSON saved to: {jsonOutputPath}");
+record LocationData(
+    string Name,
+    string Color,
+    string Topography,
+    string Climate,
+    string? Vegetation,
+    string? RawMaterial,
+    string Rank,
+    double? CityX,
+    double? CityY,
+    int[][][] Paths
+);
+
+record LocationTemplate(string Topography, string Climate, string? Vegetation, string? RawMaterial);

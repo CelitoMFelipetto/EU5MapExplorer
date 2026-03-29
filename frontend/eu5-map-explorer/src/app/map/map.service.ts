@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { map, Observable } from 'rxjs';
+import { map, Observable, Subject } from 'rxjs';
 import * as L from 'leaflet';
 import {
   ApiMapResponse,
@@ -40,17 +40,12 @@ export class MapService {
     this._map = value;
 
     if (value) {
-      // Persist zoom whenever the user finishes a zoom gesture, and keep
-      // the reactive zoom signal in sync so effects can respond to it.
       value.on('zoomend', () => {
         const z = value.getZoom();
         sessionStorage.setItem(SESSION_KEYS.zoom, z.toString());
         this.zoom.set(z);
       });
 
-      // Persist pan center whenever the user finishes a pan gesture.
-      // moveend fires on both drag-end and programmatic setView calls,
-      // so one listener covers every case.
       value.on('moveend', () => {
         const c = value.getCenter();
         sessionStorage.setItem(SESSION_KEYS.pan, JSON.stringify({ x: c.lng, y: c.lat }));
@@ -58,10 +53,6 @@ export class MapService {
     }
   }
 
-  /**
-   * Returns a saved { center, zoom } if sessionStorage has a complete entry,
-   * or null on first visit (so MapComponent falls back to fitBounds).
-   */
   getSavedView(): { center: L.LatLngExpression; zoom: number } | null {
     const zoomStr = sessionStorage.getItem(SESSION_KEYS.zoom);
     const panStr  = sessionStorage.getItem(SESSION_KEYS.pan);
@@ -85,36 +76,64 @@ export class MapService {
     sessionStorage.setItem(SESSION_KEYS.mode, mode);
   }
 
-  /**
-   * Returns the fill colour for a location given the current map mode.
-   * Reading mapMode() here makes any effect() that calls this method
-   * automatically reactive to mode changes.
-   */
   getLocationColor(location: LocationDto): string {
-    // Lakes always use the fixed water colour regardless of the selected mode.
     if (location.topography === 'lakes') return LAKE_COLOR;
-
     const mode = this.mapMode();
     if (mode === 'locations') return location.color;
-
     const legend = COLOR_LEGENDS[mode];
-    const value  = location[mode]; // topography | climate | vegetation | raw_material
+    const value  = location[mode];
     return value != null ? (legend[value] ?? LEGEND_DEFAULT_COLOR) : LEGEND_DEFAULT_COLOR;
   }
 
-  /**
-   * Fetches map data from GET /api/map and converts it into the MapDataDto
-   * shape expected by MapComponent / ProvinceComponent / LocationComponent.
-   *
-   * The API returns pixel-space coordinates [x, y] from the source PNG.
-   * Leaflet's CRS.Simple expects [lat, lng] where lat increases upward, so
-   * each point is remapped to [imageHeight - y, x].
-   * The image dimensions are derived from the max coordinates in the data.
-   */
-  getMapData(): Observable<MapDataDto> {
-    return this.http.get<ApiMapResponse>('/api/map').pipe(
-      map(response => this.mapApiResponse(response)),
-    );
+  // ── Radial BFS area loading ─────────────────────────────────────────────────
+
+  private readonly MAX_LOADED_AREAS = 10;
+  private readonly loadedAreas  = new Set<string>();
+  private readonly queuedAreas  = new Set<string>();
+  private readonly bfsQueue: string[] = [];
+
+  /** Emits once per area as it is fetched and parsed. */
+  readonly areaLoaded$ = new Subject<MapDataDto>();
+
+  /** Start radial BFS loading from the given area name. Called once by MapComponent. */
+  startRadialLoad(initialArea = 'svealand_area'): void {
+    this.enqueueArea(initialArea);
+    this.processQueue();
+  }
+
+  private enqueueArea(areaName: string): void {
+    if (this.loadedAreas.has(areaName) || this.queuedAreas.has(areaName)) return;
+    this.queuedAreas.add(areaName);
+    this.bfsQueue.push(areaName);
+  }
+
+  private processQueue(): void {
+    while (this.bfsQueue.length > 0 && this.loadedAreas.size < this.MAX_LOADED_AREAS) {
+      const areaName = this.bfsQueue.shift()!;
+      if (this.loadedAreas.has(areaName)) continue;
+
+      this.fetchArea(areaName).subscribe({
+        next: data => {
+          this.loadedAreas.add(areaName);
+          this.areaLoaded$.next(data);
+          for (const neighbour of data.neighborAreas) {
+            this.enqueueArea(neighbour);
+          }
+          this.processQueue();
+        },
+        error: err => {
+          console.error(`Failed to load area '${areaName}':`, err);
+          // Don't block the queue — skip this area and continue
+          this.processQueue();
+        },
+      });
+    }
+  }
+
+  private fetchArea(areaName: string): Observable<MapDataDto> {
+    return this.http
+      .get<ApiMapResponse>(`/api/map?area=${encodeURIComponent(areaName)}`)
+      .pipe(map(response => this.mapApiResponse(response)));
   }
 
   private mapApiResponse(response: ApiMapResponse): MapDataDto {
@@ -141,15 +160,15 @@ export class MapService {
 
     const svgWidth  = maxX;
     const svgHeight = maxY;
-    this.mapHeight  = svgHeight;
+    // mapHeight is set once from the first area; all areas share the same image dimensions
+    if (this.mapHeight === 0) this.mapHeight = svgHeight;
 
-    const flip = ([x, y]: number[]): PathCoordinates => [svgHeight - y, x];
+    const flip = ([x, y]: number[]): PathCoordinates => [this.mapHeight - y, x];
 
     // ── Pass 2: build ProvinceDtos and LocationDtos ───────────────────────────
     const provinces: ProvinceDto[] = [];
 
     for (const apiProvince of response.provinces) {
-      // Build the ProvinceDto shell first so LocationDtos can reference it.
       const provinceDto: ProvinceDto = {
         id:        apiProvince.name,
         paths:     apiProvince.paths.map(path => path.map(flip)),
@@ -175,6 +194,12 @@ export class MapService {
       provinces.push(provinceDto);
     }
 
-    return { svgWidth, svgHeight, provinces };
+    return {
+      area:         response.area,
+      svgWidth,
+      svgHeight,
+      provinces,
+      neighborAreas: response.neighbors ?? [],
+    };
   }
 }
