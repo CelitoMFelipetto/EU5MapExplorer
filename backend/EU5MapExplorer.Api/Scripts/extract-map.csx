@@ -436,6 +436,73 @@ foreach (var list in areaNeighboursMap.Values)
 
 Console.WriteLine($"  → {areaNeighbourPairs.Count} neighbour pairs found.");
 
+// ── Ramer-Douglas-Peucker polyline simplification ────────────────────────────
+
+int[][] RdpSimplify(List<(int, int)> pts, double epsilon)
+{
+    if (pts.Count <= 2)
+        return pts.Select(p => new[] { p.Item1, p.Item2 }).ToArray();
+
+    // Iterative RDP using an explicit stack to avoid stack overflow on long paths.
+    var keep = new bool[pts.Count];
+    keep[0] = true;
+    keep[pts.Count - 1] = true;
+
+    var stack = new Stack<(int Start, int End)>();
+    stack.Push((0, pts.Count - 1));
+
+    while (stack.Count > 0)
+    {
+        var (start, end) = stack.Pop();
+        if (end - start < 2)
+            continue;
+
+        double maxDist = 0;
+        int maxIdx = start;
+
+        double ax = pts[start].Item1, ay = pts[start].Item2;
+        double bx = pts[end].Item1, by = pts[end].Item2;
+        double dx = bx - ax, dy = by - ay;
+        double lenSq = dx * dx + dy * dy;
+
+        for (int i = start + 1; i < end; i++)
+        {
+            double px = pts[i].Item1 - ax, py = pts[i].Item2 - ay;
+            double dist;
+            if (lenSq == 0)
+            {
+                dist = Math.Sqrt(px * px + py * py);
+            }
+            else
+            {
+                // Perpendicular distance from point to line segment
+                double cross = Math.Abs(px * dy - py * dx);
+                dist = cross / Math.Sqrt(lenSq);
+            }
+            if (dist > maxDist)
+            {
+                maxDist = dist;
+                maxIdx = i;
+            }
+        }
+
+        if (maxDist > epsilon)
+        {
+            keep[maxIdx] = true;
+            stack.Push((start, maxIdx));
+            stack.Push((maxIdx, end));
+        }
+    }
+
+    var result = new List<int[]>();
+    for (int i = 0; i < pts.Count; i++)
+    {
+        if (keep[i])
+            result.Add(new[] { pts[i].Item1, pts[i].Item2 });
+    }
+    return result.ToArray();
+}
+
 // ── Shared tracing helpers ────────────────────────────────────────────────────
 
 var cwOrder = new Dictionary<(int, int), (int, int)[]>
@@ -527,21 +594,8 @@ int[][][] TracePaths(Func<int, int, bool> isMember)
             curr = next;
         }
 
-        var simplified = new List<int[]>();
-        for (int i = 0; i < pts.Count; i++)
-        {
-            if (i == 0 || i == pts.Count - 1)
-            {
-                simplified.Add(new[] { pts[i].Item1, pts[i].Item2 });
-                continue;
-            }
-            var (ax, ay) = pts[i - 1];
-            var (bx, by) = pts[i];
-            var (cx, cy) = pts[i + 1];
-            if ((bx - ax) * (cy - by) - (by - ay) * (cx - bx) != 0)
-                simplified.Add(new[] { bx, by });
-        }
-        tracedPaths.Add(simplified.ToArray());
+        var simplified = RdpSimplify(pts, 0.7);
+        tracedPaths.Add(simplified);
     }
     return tracedPaths.ToArray();
 }
