@@ -11,11 +11,11 @@ import {
 } from './models/location.dto';
 import { COLOR_LEGENDS, LEGEND_DEFAULT_COLOR, MAP_MODES, MapMode } from './map-mode';
 
-const LAKE_COLOR = '#11a9ec';
+const WATER_COLOR = '#11a9ec';
 
 const SESSION_KEYS = {
   zoom: 'eu5map_zoom',
-  pan:  'eu5map_pan',   // JSON { x: number; y: number }
+  pan: 'eu5map_pan',   // JSON { x: number; y: number }
   mode: 'eu5map_mode',
 } as const;
 
@@ -55,7 +55,7 @@ export class MapService {
 
   getSavedView(): { center: L.LatLngExpression; zoom: number } | null {
     const zoomStr = sessionStorage.getItem(SESSION_KEYS.zoom);
-    const panStr  = sessionStorage.getItem(SESSION_KEYS.pan);
+    const panStr = sessionStorage.getItem(SESSION_KEYS.pan);
     if (!zoomStr || !panStr) return null;
     try {
       const { x, y } = JSON.parse(panStr) as { x: number; y: number };
@@ -76,20 +76,30 @@ export class MapService {
     sessionStorage.setItem(SESSION_KEYS.mode, mode);
   }
 
+  isWaterLocation(location: LocationDto): boolean {
+    return location.topography === 'lakes' ||
+      location.topography === 'inland_sea' ||
+      location.topography === 'ocean' ||
+      location.topography === 'coastal_ocean' ||
+      location.topography === 'narrows' ||
+      location.topography === 'ocean_wasteland' ||
+      location.topography === 'deep_ocean';
+  }
+
   getLocationColor(location: LocationDto): string {
-    if (location.topography === 'lakes') return LAKE_COLOR;
+    if (this.isWaterLocation(location)) return WATER_COLOR;
     const mode = this.mapMode();
     if (mode === 'locations') return location.color;
     const legend = COLOR_LEGENDS[mode];
-    const value  = location[mode];
+    const value = location[mode];
     return value != null ? (legend[value] ?? LEGEND_DEFAULT_COLOR) : LEGEND_DEFAULT_COLOR;
   }
 
   // ── Radial BFS area loading ─────────────────────────────────────────────────
 
-  private readonly MAX_LOADED_AREAS = 10;
-  private readonly loadedAreas  = new Set<string>();
-  private readonly queuedAreas  = new Set<string>();
+  private readonly MAX_LOADED_AREAS = 100;
+  private readonly loadedAreas = new Set<string>();
+  private readonly queuedAreas = new Set<string>();
   private readonly bfsQueue: string[] = [];
 
   /** Emits once per area as it is fetched and parsed. */
@@ -158,7 +168,7 @@ export class MapService {
       }
     }
 
-    const svgWidth  = maxX;
+    const svgWidth = maxX;
     const svgHeight = maxY;
     // mapHeight is set once from the first area; all areas share the same image dimensions
     if (this.mapHeight === 0) this.mapHeight = svgHeight;
@@ -170,23 +180,23 @@ export class MapService {
 
     for (const apiProvince of response.provinces) {
       const provinceDto: ProvinceDto = {
-        id:        apiProvince.name,
-        paths:     apiProvince.paths.map(path => path.map(flip)),
+        id: apiProvince.name,
+        paths: apiProvince.paths.map(path => path.map(flip)),
         locations: [],
       };
 
       provinceDto.locations = apiProvince.locations.map(loc => {
         const locationDto: LocationDto = {
-          id:            loc.name,
-          color:         `#${loc.color}`,
-          topography:    loc.topography,
-          climate:       loc.climate,
-          vegetation:    loc.vegetation,
-          raw_material:  loc.raw_material,
-          rank:          loc.rank,
+          id: loc.name,
+          color: `#${loc.color}`,
+          topography: loc.topography,
+          climate: loc.climate,
+          vegetation: loc.vegetation,
+          raw_material: loc.raw_material,
+          rank: loc.rank,
           city_position: loc.city_position ?? null,
-          paths:         loc.paths.map(path => path.map(flip)),
-          province:      provinceDto,
+          paths: loc.paths.map(path => path.map(flip)),
+          province: provinceDto,
         };
         return locationDto;
       });
@@ -195,7 +205,7 @@ export class MapService {
     }
 
     return {
-      area:         response.area,
+      area: response.area,
       svgWidth,
       svgHeight,
       provinces,
