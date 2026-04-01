@@ -460,14 +460,18 @@ int[][] RdpSimplify(List<(int, int)> pts, double epsilon)
         double maxDist = 0;
         int maxIdx = start;
 
-        double ax = pts[start].Item1, ay = pts[start].Item2;
-        double bx = pts[end].Item1, by = pts[end].Item2;
-        double dx = bx - ax, dy = by - ay;
+        double ax = pts[start].Item1,
+            ay = pts[start].Item2;
+        double bx = pts[end].Item1,
+            by = pts[end].Item2;
+        double dx = bx - ax,
+            dy = by - ay;
         double lenSq = dx * dx + dy * dy;
 
         for (int i = start + 1; i < end; i++)
         {
-            double px = pts[i].Item1 - ax, py = pts[i].Item2 - ay;
+            double px = pts[i].Item1 - ax,
+                py = pts[i].Item2 - ay;
             double dist;
             if (lenSq == 0)
             {
@@ -706,7 +710,9 @@ for (int ci = 0; ci < locationColors.Count; ci++)
         relevantIndices.Add(ci);
 }
 
-Console.WriteLine($"  Tracing {relevantIndices.Count} location paths (filtered from {locationColors.Count} global)...");
+Console.WriteLine(
+    $"  Tracing {relevantIndices.Count} location paths (filtered from {locationColors.Count} global)..."
+);
 var locationResults = new int[locationColors.Count][][][];
 Parallel.For(
     0,

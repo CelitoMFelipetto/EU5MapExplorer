@@ -181,25 +181,36 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.mapService.startRadialLoad('svealand_area');
   }
 
-  private initMap(svgWidth: number, svgHeight: number): void {
+  // Full map pixel dimensions (source image: locations.png).
+  private static readonly MAP_WIDTH = 16384;
+  private static readonly MAP_HEIGHT = 8192;
+
+  private initMap(_svgWidth: number, _svgHeight: number): void {
+    const MAP_WIDTH = MapComponent.MAP_WIDTH;
+    const MAP_HEIGHT = MapComponent.MAP_HEIGHT;
+
     // Build a minimal SVG shell — LocationComponents fill it with <path> elements.
     const ns = 'http://www.w3.org/2000/svg';
     const svgEl = document.createElementNS(ns, 'svg') as SVGSVGElement;
-    svgEl.setAttribute('width', String(svgWidth));
-    svgEl.setAttribute('height', String(svgHeight));
-    svgEl.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+    svgEl.setAttribute('width', String(MAP_WIDTH));
+    svgEl.setAttribute('height', String(MAP_HEIGHT));
+    svgEl.setAttribute('viewBox', `0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`);
 
     // The padding translate matches the 2px pad baked into the SVG coordinates.
     const group = document.createElementNS(ns, 'g') as SVGGElement;
     group.setAttribute('transform', 'translate(2,2)');
     svgEl.appendChild(group);
 
+    const mapBounds: L.LatLngBoundsExpression = [[0, 0], [MAP_HEIGHT, MAP_WIDTH]];
+
     this.map = L.map(this.mapEl.nativeElement, {
       crs: L.CRS.Simple,
-      minZoom: -3,
+      minZoom: -1,
       maxZoom: 5,
       zoomSnap: 0.25,
       attributionControl: false,
+      maxBounds: mapBounds,
+      maxBoundsViscosity: 1.0,
     });
 
     // Read the saved view BEFORE assigning the map to the service.
@@ -226,13 +237,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
 
     // CRS.Simple: lat increases upward → SW=[0,0], NE=[h,w].
-    const bounds: L.LatLngBoundsExpression = [[0, 0], [svgHeight, svgWidth]];
-    L.svgOverlay(svgEl, bounds).addTo(this.map);
+    L.svgOverlay(svgEl, mapBounds).addTo(this.map);
 
     if (savedView) {
       this.map.setView(savedView.center, savedView.zoom, { animate: false });
     } else {
-      this.map.fitBounds(bounds);
+      this.map.fitBounds(mapBounds);
     }
 
     const initialZoom = this.map.getZoom();

@@ -29,7 +29,8 @@ function readSessionMode(): MapMode {
 @Injectable({ providedIn: 'root' })
 export class MapService {
   private readonly http = inject(HttpClient);
-  public mapHeight = 0;
+  /** Full map height in pixels (source image: locations.png). */
+  public mapHeight = 8192;
 
   /** The active Leaflet map instance. Set by MapComponent, cleared on destroy. */
   private _map: L.Map | null = null;
@@ -97,7 +98,7 @@ export class MapService {
 
   // ── Radial BFS area loading ─────────────────────────────────────────────────
 
-  private readonly MAX_LOADED_AREAS = 100;
+  private readonly MAX_LOADED_AREAS = 400;
   private readonly loadedAreas = new Set<string>();
   private readonly queuedAreas = new Set<string>();
   private readonly bfsQueue: string[] = [];
@@ -170,9 +171,6 @@ export class MapService {
 
     const svgWidth = maxX;
     const svgHeight = maxY;
-    // mapHeight is set once from the first area; all areas share the same image dimensions
-    if (this.mapHeight === 0) this.mapHeight = svgHeight;
-
     const flip = ([x, y]: number[]): PathCoordinates => [this.mapHeight - y, x];
 
     // ── Pass 2: build ProvinceDtos and LocationDtos ───────────────────────────
