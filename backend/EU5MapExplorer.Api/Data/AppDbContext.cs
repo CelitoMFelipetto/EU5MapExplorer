@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<GameVersionArea> GameVersionAreas => Set<GameVersionArea>();
     public DbSet<Province> Provinces => Set<Province>();
     public DbSet<Location> Locations => Set<Location>();
+    public DbSet<Border> Borders => Set<Border>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -64,15 +65,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(128).IsRequired();
             e.HasIndex(x => new { x.AreaId, x.Name }).IsUnique();
-            e.Property(x => x.Paths)
+            e.Property(x => x.BorderRings)
              .HasColumnType("jsonb")
              .HasConversion(
                  v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                 s => JsonSerializer.Deserialize<int[][][]>(s, (JsonSerializerOptions?)null) ?? Array.Empty<int[][]>())
-             .Metadata.SetValueComparer(new ValueComparer<int[][][]>(
+                 s => JsonSerializer.Deserialize<BorderRing[]>(s, (JsonSerializerOptions?)null) ?? Array.Empty<BorderRing>())
+             .Metadata.SetValueComparer(new ValueComparer<BorderRing[]>(
                  (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
                  v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
-                 v => JsonSerializer.Deserialize<int[][][]>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null)!));
+                 v => JsonSerializer.Deserialize<BorderRing[]>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null)!));
             e.HasOne(x => x.Area)
              .WithMany(a => a.Provinces)
              .HasForeignKey(x => x.AreaId)
@@ -91,6 +92,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Vegetation).HasMaxLength(64);
             e.Property(x => x.RawMaterial).HasMaxLength(64);
             e.Property(x => x.Rank).HasMaxLength(32).IsRequired();
+            e.Property(x => x.BorderRings)
+             .HasColumnType("jsonb")
+             .HasConversion(
+                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                 s => JsonSerializer.Deserialize<BorderRing[]>(s, (JsonSerializerOptions?)null) ?? Array.Empty<BorderRing>())
+             .Metadata.SetValueComparer(new ValueComparer<BorderRing[]>(
+                 (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
+                 v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
+                 v => JsonSerializer.Deserialize<BorderRing[]>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null)!));
+            e.HasOne(x => x.Province)
+             .WithMany(p => p.Locations)
+             .HasForeignKey(x => x.ProvinceId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        mb.Entity<Border>(e =>
+        {
+            e.ToTable("borders");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Key).HasMaxLength(260).IsRequired();
+            e.HasIndex(x => x.Key).IsUnique();
+            e.Property(x => x.LocationA).HasMaxLength(128).IsRequired();
+            e.Property(x => x.LocationB).HasMaxLength(128).IsRequired();
             e.Property(x => x.Paths)
              .HasColumnType("jsonb")
              .HasConversion(
@@ -100,10 +124,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                  (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
                  v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null).GetHashCode(),
                  v => JsonSerializer.Deserialize<int[][][]>(JsonSerializer.Serialize(v, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null)!));
-            e.HasOne(x => x.Province)
-             .WithMany(p => p.Locations)
-             .HasForeignKey(x => x.ProvinceId)
-             .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

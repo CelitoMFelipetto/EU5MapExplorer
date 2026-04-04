@@ -13,7 +13,7 @@ public class Location
     public string Rank { get; set; } = "rural_settlement";
     public double? CityX { get; set; }
     public double? CityY { get; set; }
-    public int[][][] Paths { get; set; } = [];
+    public BorderRing[] BorderRings { get; set; } = [];
 
     public Province Province { get; set; } = null!;
 }

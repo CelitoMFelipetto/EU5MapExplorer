@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { map, Observable, Subject } from 'rxjs';
 import * as L from 'leaflet';
 import {
+  ApiBorderRing,
   ApiMapResponse,
   LocationDto,
   MapDataDto,
@@ -98,6 +99,9 @@ export class MapService {
 
   // ── Radial BFS area loading ─────────────────────────────────────────────────
 
+  /** Cache of border paths keyed by "locA|locB". Persists across area loads. */
+  private readonly borderCache = new Map<string, number[][][]>();
+
   private readonly MAX_LOADED_AREAS = 400;
   private readonly loadedAreas = new Set<string>();
   private readonly queuedAreas = new Set<string>();
@@ -148,38 +152,39 @@ export class MapService {
   }
 
   private mapApiResponse(response: ApiMapResponse): MapDataDto {
-    // ── Pass 1: derive image bounds from max coordinates ─────────────────────
-    let maxX = 0;
-    let maxY = 0;
-
-    for (const province of response.provinces) {
-      for (const path of province.paths) {
-        for (const [x, y] of path) {
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-        }
-      }
-      for (const location of province.locations) {
-        for (const path of location.paths) {
-          for (const [x, y] of path) {
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-          }
-        }
-      }
+    // Merge borders into cache
+    for (const [key, paths] of Object.entries(response.borders)) {
+      if (!this.borderCache.has(key)) this.borderCache.set(key, paths);
     }
 
-    const svgWidth = maxX;
-    const svgHeight = maxY;
     const flip = ([x, y]: number[]): PathCoordinates => [this.mapHeight - y, x];
 
-    // ── Pass 2: build ProvinceDtos and LocationDtos ───────────────────────────
+    // Reconstruct a closed polygon from ordered border rings
+    const reconstructPaths = (rings: ApiBorderRing[]): PathCoordinates[][] =>
+      rings.map(ring => {
+        const points: PathCoordinates[] = [];
+        for (const ref of ring.borders) {
+          const borderPaths = this.borderCache.get(ref.key);
+          if (!borderPaths) continue;
+          for (const seg of borderPaths) {
+            const ordered = ref.reversed ? [...seg].reverse() : seg;
+            // Skip first point if it duplicates the last point already added (junction)
+            const start = points.length > 0 ? 1 : 0;
+            for (let i = start; i < ordered.length; i++) {
+              points.push(flip(ordered[i]));
+            }
+          }
+        }
+        return points;
+      });
+
     const provinces: ProvinceDto[] = [];
 
     for (const apiProvince of response.provinces) {
       const provinceDto: ProvinceDto = {
         id: apiProvince.name,
-        paths: apiProvince.paths.map(path => path.map(flip)),
+        paths: reconstructPaths(apiProvince.borderRings),
+        bounds: apiProvince.bounds,
         locations: [],
       };
 
@@ -193,13 +198,20 @@ export class MapService {
           raw_material: loc.raw_material,
           rank: loc.rank,
           city_position: loc.city_position ?? null,
-          paths: loc.paths.map(path => path.map(flip)),
+          paths: reconstructPaths(loc.borderRings),
           province: provinceDto,
         };
         return locationDto;
       });
 
       provinces.push(provinceDto);
+    }
+
+    // Derive svgWidth/svgHeight from bounds
+    let svgWidth = 0, svgHeight = 0;
+    for (const p of response.provinces) {
+      if (p.bounds.maxE > svgWidth) svgWidth = p.bounds.maxE;
+      if (p.bounds.maxS > svgHeight) svgHeight = p.bounds.maxS;
     }
 
     return {

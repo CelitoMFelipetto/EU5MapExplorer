@@ -40,11 +40,20 @@ export interface LocationDto {
   province: ProvinceDto;
 }
 
+export interface ProvinceBounds {
+  maxN: number;
+  maxS: number;
+  maxE: number;
+  maxW: number;
+}
+
 export interface ProvinceDto {
   /** Province name (e.g. 'uppland_province'). */
   id: string;
   /** Leaflet-ready province boundary paths — coordinates already converted to [lat, lng]. */
   paths: PolygonPath;
+  /** Bounding box in pixel coordinates for future viewport culling. */
+  bounds: ProvinceBounds;
   /** All locations that belong to this province. */
   locations: LocationDto[];
 }
@@ -58,6 +67,13 @@ export interface MapDataDto {
 }
 
 // ── Raw shapes returned by GET /api/map ───────────────────────────────────────
+
+export interface ApiBorderRef {
+  key: string;
+  reversed: boolean;
+}
+
+export type ApiBorderRing = { borders: ApiBorderRef[] };
 
 export interface ApiLocationDto {
   /** Location name as defined in definitions.txt (e.g. 'stockholm'). */
@@ -75,22 +91,23 @@ export interface ApiLocationDto {
    * Null for locations with no city object (e.g. lakes, wastelands).
    */
   city_position: CityPosition | null;
-  /**
-   * Boundary polygon paths in raw image pixel space.
-   * paths[pathIndex][pointIndex] = [x, y]
-   */
-  paths: number[][][];
+  /** Border rings referencing shared border segments. */
+  borderRings: ApiBorderRing[];
 }
 
 export interface ApiProvinceDto {
   name: string;
-  /** Boundary polygon paths in raw image pixel space. */
-  paths: number[][][];
+  /** Border rings referencing shared border segments. */
+  borderRings: ApiBorderRing[];
+  /** Province bounding box in pixel coordinates. */
+  bounds: ProvinceBounds;
   locations: ApiLocationDto[];
 }
 
 export interface ApiMapResponse {
   area: string;
   neighbors: string[];
+  /** Shared border paths keyed by "locA|locB". */
+  borders: Record<string, number[][][]>;
   provinces: ApiProvinceDto[];
 }

@@ -1,4 +1,5 @@
 using EU5MapExplorer.Api.Data;
+using EU5MapExplorer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,7 +8,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<AppDbContext>(opts =>
-    opts.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    opts.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
+);
 
 var app = builder.Build();
 
@@ -27,146 +29,222 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapGet("/api/map", async (
-    string? area,
-    string? version,
-    AppDbContext db,
-    IConfiguration config) =>
-{
-    var areaName    = area    ?? "svealand_area";
-    var gameVersion = version ?? config["EU5:Version"] ?? "1.1.10";
-
-    var areaEntity = await db.Areas
-        .Include(a => a.Provinces)
-            .ThenInclude(p => p.Locations)
-        .Where(a => a.Name == areaName
-                 && a.GameVersionAreas.Any(gva => gva.GameVersion.Version == gameVersion))
-        .FirstOrDefaultAsync();
-
-    if (areaEntity is null)
-        return Results.NotFound(new
+app.MapGet(
+        "/api/map",
+        async (string? area, string? version, AppDbContext db, IConfiguration config) =>
         {
-            error = $"Area '{areaName}' not found for version '{gameVersion}'. Run the extract-map script first."
-        });
+            var areaName = area ?? "svealand_area";
+            var gameVersion = version ?? config["EU5:Version"] ?? "1.1.10";
 
-    var response = new
-    {
-        area      = areaEntity.Name,
-        neighbors = areaEntity.Neighbors,
-        provinces = areaEntity.Provinces.Select(p => new
-        {
-            name      = p.Name,
-            paths     = p.Paths,
-            locations = p.Locations.Select(loc => new
+            var areaEntity = await db
+                .Areas.Include(a => a.Provinces)
+                    .ThenInclude(p => p.Locations)
+                .Where(a =>
+                    a.Name == areaName
+                    && a.GameVersionAreas.Any(gva => gva.GameVersion.Version == gameVersion)
+                )
+                .FirstOrDefaultAsync();
+
+            if (areaEntity is null)
+                return Results.NotFound(
+                    new
+                    {
+                        error = $"Area '{areaName}' not found for version '{gameVersion}'. Run the extract-map script first.",
+                    }
+                );
+
+            // Collect all border keys referenced by locations and provinces in this area.
+            var borderKeys = new HashSet<string>();
+            foreach (var p in areaEntity.Provinces)
             {
-                name         = loc.Name,
-                color        = loc.Color,
-                topography   = loc.Topography,
-                climate      = loc.Climate,
-                vegetation   = loc.Vegetation,
-                raw_material = loc.RawMaterial,
-                rank         = loc.Rank,
-                city_position = (loc.CityX.HasValue && loc.CityY.HasValue)
-                    ? new { x = loc.CityX.Value, y = loc.CityY.Value }
-                    : null as object,
-                paths = loc.Paths,
-            }).ToArray(),
-        }).ToArray(),
-    };
+                foreach (var ring in p.BorderRings)
+                foreach (var br in ring.Borders)
+                    borderKeys.Add(br.Key);
+                foreach (var loc in p.Locations)
+                foreach (var ring in loc.BorderRings)
+                foreach (var br in ring.Borders)
+                    borderKeys.Add(br.Key);
+            }
 
-    return Results.Ok(response);
-})
-.WithName("GetMap")
-.WithOpenApi();
+            // Batch-load referenced borders.
+            var borderEntities = await db
+                .Borders.Where(b => borderKeys.Contains(b.Key))
+                .ToListAsync();
+            var bordersDict = borderEntities.ToDictionary(b => b.Key, b => b.Paths);
 
-app.MapGet("/api/saves/header", (string? path) =>
-{
-    var repoRoot = GetRepoRoot(app.Environment.ContentRootPath);
-    var relativeOrAbsolute = string.IsNullOrWhiteSpace(path)
-        ? Path.Combine(repoRoot, "SP_NAP_1337_04_01_204f0002-e9cc-495b-b4c0-2b84f7eb5e56.eu5")
-        : path;
+            var response = new
+            {
+                area = areaEntity.Name,
+                neighbors = areaEntity.Neighbors,
+                borders = bordersDict,
+                provinces = areaEntity
+                    .Provinces.Select(p => new
+                    {
+                        name = p.Name,
+                        borderRings = p.BorderRings,
+                        bounds = new
+                        {
+                            maxN = p.MaxN,
+                            maxS = p.MaxS,
+                            maxE = p.MaxE,
+                            maxW = p.MaxW,
+                        },
+                        locations = p
+                            .Locations.Select(loc => new
+                            {
+                                name = loc.Name,
+                                color = loc.Color,
+                                topography = loc.Topography,
+                                climate = loc.Climate,
+                                vegetation = loc.Vegetation,
+                                raw_material = loc.RawMaterial,
+                                rank = loc.Rank,
+                                city_position = (loc.CityX.HasValue && loc.CityY.HasValue)
+                                    ? new { x = loc.CityX.Value, y = loc.CityY.Value }
+                                    : null as object,
+                                borderRings = loc.BorderRings,
+                            })
+                            .ToArray(),
+                    })
+                    .ToArray(),
+            };
 
-    var fullPath = Path.GetFullPath(Path.IsPathRooted(relativeOrAbsolute)
-        ? relativeOrAbsolute
-        : Path.Combine(repoRoot, relativeOrAbsolute));
+            return Results.Ok(response);
+        }
+    )
+    .WithName("GetMap")
+    .WithOpenApi();
 
-    if (!fullPath.StartsWith(repoRoot, StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(new { error = "Path must be inside the repository root." });
-    }
+app.MapGet(
+        "/api/saves/header",
+        (string? path) =>
+        {
+            var repoRoot = GetRepoRoot(app.Environment.ContentRootPath);
+            var relativeOrAbsolute = string.IsNullOrWhiteSpace(path)
+                ? Path.Combine(
+                    repoRoot,
+                    "SP_NAP_1337_04_01_204f0002-e9cc-495b-b4c0-2b84f7eb5e56.eu5"
+                )
+                : path;
 
-    if (!File.Exists(fullPath))
-    {
-        return Results.NotFound(new { error = "File not found.", fullPath });
-    }
+            var fullPath = Path.GetFullPath(
+                Path.IsPathRooted(relativeOrAbsolute)
+                    ? relativeOrAbsolute
+                    : Path.Combine(repoRoot, relativeOrAbsolute)
+            );
 
-    if (!string.Equals(Path.GetExtension(fullPath), ".eu5", StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(new { error = "Only .eu5 files are supported for this endpoint." });
-    }
+            if (!fullPath.StartsWith(repoRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(
+                    new { error = "Path must be inside the repository root." }
+                );
+            }
 
-    var headerLine = EU5MapExplorer.Api.Eu5SaveInspector.ReadHeaderLine(fullPath);
-    var header = EU5MapExplorer.Api.Eu5SaveInspector.ParseHeader(headerLine);
+            if (!File.Exists(fullPath))
+            {
+                return Results.NotFound(new { error = "File not found.", fullPath });
+            }
 
-    return Results.Ok(new
-    {
-        file = new { fullPath },
-        header
-    });
-})
-.WithName("GetEu5SaveHeader")
-.WithOpenApi();
+            if (
+                !string.Equals(
+                    Path.GetExtension(fullPath),
+                    ".eu5",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                return Results.BadRequest(
+                    new { error = "Only .eu5 files are supported for this endpoint." }
+                );
+            }
 
-app.MapGet("/api/saves/inspect", (string? path, int? previewBytes, bool? includeZipEntryPreview, bool? includeGamestateTree, int? maxNodes, int? maxDepth) =>
-{
-    var repoRoot = GetRepoRoot(app.Environment.ContentRootPath);
-    var relativeOrAbsolute = string.IsNullOrWhiteSpace(path)
-        ? Path.Combine(repoRoot, "SP_NAP_1337_04_01_204f0002-e9cc-495b-b4c0-2b84f7eb5e56.eu5")
-        : path;
+            var headerLine = EU5MapExplorer.Api.Eu5SaveInspector.ReadHeaderLine(fullPath);
+            var header = EU5MapExplorer.Api.Eu5SaveInspector.ParseHeader(headerLine);
 
-    var fullPath = Path.GetFullPath(Path.IsPathRooted(relativeOrAbsolute)
-        ? relativeOrAbsolute
-        : Path.Combine(repoRoot, relativeOrAbsolute));
+            return Results.Ok(new { file = new { fullPath }, header });
+        }
+    )
+    .WithName("GetEu5SaveHeader")
+    .WithOpenApi();
 
-    if (!fullPath.StartsWith(repoRoot, StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(new { error = "Path must be inside the repository root." });
-    }
+app.MapGet(
+        "/api/saves/inspect",
+        (
+            string? path,
+            int? previewBytes,
+            bool? includeZipEntryPreview,
+            bool? includeGamestateTree,
+            int? maxNodes,
+            int? maxDepth
+        ) =>
+        {
+            var repoRoot = GetRepoRoot(app.Environment.ContentRootPath);
+            var relativeOrAbsolute = string.IsNullOrWhiteSpace(path)
+                ? Path.Combine(
+                    repoRoot,
+                    "SP_NAP_1337_04_01_204f0002-e9cc-495b-b4c0-2b84f7eb5e56.eu5"
+                )
+                : path;
 
-    if (!File.Exists(fullPath))
-    {
-        return Results.NotFound(new { error = "File not found.", fullPath });
-    }
+            var fullPath = Path.GetFullPath(
+                Path.IsPathRooted(relativeOrAbsolute)
+                    ? relativeOrAbsolute
+                    : Path.Combine(repoRoot, relativeOrAbsolute)
+            );
 
-    if (!string.Equals(Path.GetExtension(fullPath), ".eu5", StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(new { error = "Only .eu5 files are supported for this endpoint." });
-    }
+            if (!fullPath.StartsWith(repoRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(
+                    new { error = "Path must be inside the repository root." }
+                );
+            }
 
-    var headerLine = EU5MapExplorer.Api.Eu5SaveInspector.ReadHeaderLine(fullPath);
-    var header = EU5MapExplorer.Api.Eu5SaveInspector.ParseHeader(headerLine);
+            if (!File.Exists(fullPath))
+            {
+                return Results.NotFound(new { error = "File not found.", fullPath });
+            }
 
-    var previewLen = Math.Clamp(previewBytes ?? 256, 0, 4096);
-    var nodeLimit = Math.Clamp(maxNodes ?? 500, 50, 20_000);
-    var depthLimit = Math.Clamp(maxDepth ?? 4, 1, 50);
-    var inspection = EU5MapExplorer.Api.Eu5SaveInspector.Inspect(
-        fullPath,
-        afterHeaderPreviewBytes: previewLen,
-        includeZipEntryPreview: includeZipEntryPreview ?? false,
-        includeGamestateTree: includeGamestateTree ?? false,
-        maxGamestateNodes: nodeLimit,
-        maxGamestateDepth: depthLimit);
+            if (
+                !string.Equals(
+                    Path.GetExtension(fullPath),
+                    ".eu5",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                return Results.BadRequest(
+                    new { error = "Only .eu5 files are supported for this endpoint." }
+                );
+            }
 
-    return Results.Ok(new
-    {
-        file = new { fullPath, length = new FileInfo(fullPath).Length },
-        header,
-        afterHeader = inspection.AfterHeader,
-        embeddedZip = inspection.EmbeddedZip,
-        gamestate = inspection.Gamestate
-    });
-})
-.WithName("InspectEu5Save")
-.WithOpenApi();
+            var headerLine = EU5MapExplorer.Api.Eu5SaveInspector.ReadHeaderLine(fullPath);
+            var header = EU5MapExplorer.Api.Eu5SaveInspector.ParseHeader(headerLine);
+
+            var previewLen = Math.Clamp(previewBytes ?? 256, 0, 4096);
+            var nodeLimit = Math.Clamp(maxNodes ?? 500, 50, 20_000);
+            var depthLimit = Math.Clamp(maxDepth ?? 4, 1, 50);
+            var inspection = EU5MapExplorer.Api.Eu5SaveInspector.Inspect(
+                fullPath,
+                afterHeaderPreviewBytes: previewLen,
+                includeZipEntryPreview: includeZipEntryPreview ?? false,
+                includeGamestateTree: includeGamestateTree ?? false,
+                maxGamestateNodes: nodeLimit,
+                maxGamestateDepth: depthLimit
+            );
+
+            return Results.Ok(
+                new
+                {
+                    file = new { fullPath, length = new FileInfo(fullPath).Length },
+                    header,
+                    afterHeader = inspection.AfterHeader,
+                    embeddedZip = inspection.EmbeddedZip,
+                    gamestate = inspection.Gamestate,
+                }
+            );
+        }
+    )
+    .WithName("InspectEu5Save")
+    .WithOpenApi();
 
 app.Run();

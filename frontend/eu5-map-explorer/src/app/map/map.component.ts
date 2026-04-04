@@ -178,7 +178,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.renderProvinces(provinces);
       });
 
-    this.mapService.startRadialLoad('svealand_area');
+    this.mapService.startRadialLoad('atlantic_south_equatorial_area');
   }
 
   // Full map pixel dimensions (source image: locations.png).
