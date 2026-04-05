@@ -128,35 +128,52 @@ public class PolygonReconstructorTests
     }
 
     /// <summary>
-    /// Border with multiple path segments (non-contiguous border between two locations).
-    /// All segments should be concatenated.
+    /// Border with multiple path segments (e.g. an island border).
+    /// PathIndex selects which specific segment to use — each BorderRef picks exactly one.
     /// </summary>
     [Fact]
-    public void MultipleBorderSegments_AllConcatenated()
+    public void PathIndex_SelectsCorrectSegment()
     {
         var cache = new Dictionary<string, int[][][]>
         {
             ["a|b"] = [
-                [[0, 0], [1, 0]],    // segment 1
-                [[3, 0], [4, 0]],    // segment 2
+                [[0, 0], [1, 0]],    // path 0
+                [[3, 0], [4, 0]],    // path 1
             ],
         };
 
-        var ring = new BorderRing([
-            new BorderRef("a|b", false),
-        ]);
+        // PathIndex 0 → only uses path 0
+        var ring0 = new BorderRing([new BorderRef("a|b", false, 0)]);
+        var result0 = PolygonReconstructor.Reconstruct([ring0], cache, mapHeight: 0);
+        Assert.Single(result0);
+        Assert.Equal(2, result0[0].Count);
+        Assert.Equal([0, 0], result0[0][0]);
+        Assert.Equal([1, 0], result0[0][1]);
 
+        // PathIndex 1 → only uses path 1
+        var ring1 = new BorderRing([new BorderRef("a|b", false, 1)]);
+        var result1 = PolygonReconstructor.Reconstruct([ring1], cache, mapHeight: 0);
+        Assert.Single(result1);
+        Assert.Equal(2, result1[0].Count);
+        Assert.Equal([3, 0], result1[0][0]);
+        Assert.Equal([4, 0], result1[0][1]);
+    }
+
+    /// <summary>
+    /// PathIndex out of range — gracefully skipped (produces empty polygon).
+    /// </summary>
+    [Fact]
+    public void PathIndex_OutOfRange_Skipped()
+    {
+        var cache = new Dictionary<string, int[][][]>
+        {
+            ["a|b"] = [[[0, 0], [1, 0]]],
+        };
+
+        var ring = new BorderRing([new BorderRef("a|b", false, 5)]);
         var result = PolygonReconstructor.Reconstruct([ring], cache, mapHeight: 0);
 
         Assert.Single(result);
-        // First segment: [0,0], [1,0] (2 points)
-        // Second segment: skip first if duplicate? No, [1,0] != [3,0], so [3,0] is included
-        // Actually: start=0 for first seg (empty points), then start=1 for second seg
-        // Seg 1: all points → [0,0], [1,0]
-        // Seg 2: skip index 0 → [4,0]
-        Assert.Equal(3, result[0].Count);
-        Assert.Equal([0, 0], result[0][0]);
-        Assert.Equal([1, 0], result[0][1]);
-        Assert.Equal([4, 0], result[0][2]);
+        Assert.Empty(result[0]);
     }
 }

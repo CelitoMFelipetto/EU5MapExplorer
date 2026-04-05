@@ -71,6 +71,7 @@ export interface MapDataDto {
 export interface ApiBorderRef {
   key: string;
   reversed: boolean;
+  pathIndex: number;
 }
 
 export type ApiBorderRing = { borders: ApiBorderRef[] };

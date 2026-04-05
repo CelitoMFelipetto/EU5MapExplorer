@@ -46,7 +46,7 @@ public static class RingBuilder
             {
                 used[currentEi] = true;
                 var entry = entries[currentEi];
-                refs.Add(new BorderRef(entry.Key, entry.Reversed));
+                refs.Add(new BorderRef(entry.Key, entry.Reversed, entry.PathIndex));
 
                 // Find next unused entry whose start matches this entry's end
                 int nextEi = -1;

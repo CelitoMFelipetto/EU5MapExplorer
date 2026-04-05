@@ -166,13 +166,13 @@ export class MapService {
         for (const ref of ring.borders) {
           const borderPaths = this.borderCache.get(ref.key);
           if (!borderPaths) continue;
-          for (const seg of borderPaths) {
-            const ordered = ref.reversed ? [...seg].reverse() : seg;
-            // Skip first point if it duplicates the last point already added (junction)
-            const start = points.length > 0 ? 1 : 0;
-            for (let i = start; i < ordered.length; i++) {
-              points.push(flip(ordered[i]));
-            }
+          const seg = borderPaths[ref.pathIndex ?? 0];
+          if (!seg) continue;
+          const ordered = ref.reversed ? [...seg].reverse() : seg;
+          // Skip first point if it duplicates the last point already added (junction)
+          const start = points.length > 0 ? 1 : 0;
+          for (let i = start; i < ordered.length; i++) {
+            points.push(flip(ordered[i]));
           }
         }
         return points;

@@ -3,8 +3,8 @@ namespace EU5MapExplorer.Api.Services.GameDataLoad;
 /// <summary>A 2D integer point (pixel grid vertex).</summary>
 public readonly record struct Point(int X, int Y);
 
-/// <summary>Reference to a named border segment, with direction.</summary>
-public readonly record struct BorderRef(string Key, bool Reversed);
+/// <summary>Reference to a named border segment, with direction and path index.</summary>
+public readonly record struct BorderRef(string Key, bool Reversed, int PathIndex = 0);
 
 /// <summary>An ordered ring of border references that forms a closed polygon.</summary>
 public sealed class BorderRing(BorderRef[] borders)

@@ -4,6 +4,7 @@ public class BorderRef
 {
     public string Key { get; set; } = null!;
     public bool Reversed { get; set; }
+    public int PathIndex { get; set; }
 }
 
 public class BorderRing

@@ -255,6 +255,9 @@ Console.WriteLine(
 );
 
 var tracedBorders = new ConcurrentDictionary<(int, int), int[][][]>();
+// rightSideIdx per (idxA, idxB, pathIdx) — computed from original pre-RDP path so
+// the unit-length axis-aligned steps give a reliable right-normal sample.
+var borderRightSideIdx = new ConcurrentDictionary<(int, int, int), int>();
 
 Parallel.ForEach(
     relevantBorderKeys,
@@ -262,6 +265,17 @@ Parallel.ForEach(
     {
         var edges = borderEdges[borderKey];
         var tracedPaths = BorderTracer.Trace(edges);
+        // Compute rightSideIdx from original paths before simplification
+        for (int pi = 0; pi < tracedPaths.Count; pi++)
+        {
+            var tp = tracedPaths[pi];
+            if (tp.Count >= 2)
+            {
+                var minPath = new[] { new[] { tp[0].X, tp[0].Y }, new[] { tp[1].X, tp[1].Y } };
+                var rsi = BorderSideHelper.GetRightSideIndex(minPath, colorMap, width, height);
+                borderRightSideIdx[(borderKey.Item1, borderKey.Item2, pi)] = rsi;
+            }
+        }
         tracedBorders[borderKey] = tracedPaths
             .Select(p => RdpSimplifier.Simplify(p, 0.7))
             .ToArray();
@@ -334,7 +348,8 @@ Parallel.ForEach(
             if (pathIdx >= paths.Length || paths[pathIdx].Length == 0)
                 continue;
             var path = paths[pathIdx];
-            var rightSideIdx = BorderSideHelper.GetRightSideIndex(path, colorMap, width, height);
+            var rightSideIdx = borderRightSideIdx.GetValueOrDefault(
+                (idxKey.Item1, idxKey.Item2, pathIdx), -1);
             var reversed = BorderSideHelper.IsReversedForLocation(locIdx, rightSideIdx);
             var startPt = reversed
                 ? new GdPoint(path[^1][0], path[^1][1])
@@ -409,7 +424,8 @@ foreach (var aName in filteredAreaNames)
                     continue;
                 var path = paths[pathIdx];
                 var insideIdx = provIndices.Contains(idxKey.Item1) ? idxKey.Item1 : idxKey.Item2;
-                var rightSideIdx = BorderSideHelper.GetRightSideIndex(path, colorMap, width, height);
+                var rightSideIdx = borderRightSideIdx.GetValueOrDefault(
+                    (idxKey.Item1, idxKey.Item2, pathIdx), -1);
                 var reversed = BorderSideHelper.IsReversedForLocation(insideIdx, rightSideIdx);
                 var startPt = reversed
                     ? new GdPoint(path[^1][0], path[^1][1])
@@ -486,7 +502,7 @@ foreach (var (locIdx, rings) in locationRings)
         continue;
     }
     var borderRings = rings
-        .Select(ring => new { Borders = ring.Borders.Select(b => new { b.Key, b.Reversed }).ToArray() })
+        .Select(ring => new { Borders = ring.Borders.Select(b => new { b.Key, b.Reversed, b.PathIndex }).ToArray() })
         .ToArray();
 
     using var cmd = new NpgsqlCommand(
@@ -511,7 +527,7 @@ foreach (var ((aName, provName), (provRings, maxN, maxS, maxE, maxW)) in provinc
         continue;
     }
     var borderRings = provRings
-        .Select(ring => new { Borders = ring.Borders.Select(b => new { b.Key, b.Reversed }).ToArray() })
+        .Select(ring => new { Borders = ring.Borders.Select(b => new { b.Key, b.Reversed, b.PathIndex }).ToArray() })
         .ToArray();
 
     using var cmd = new NpgsqlCommand(

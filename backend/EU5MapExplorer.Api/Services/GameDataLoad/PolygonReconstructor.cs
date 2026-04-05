@@ -30,19 +30,19 @@ public static class PolygonReconstructor
             {
                 if (!borderCache.TryGetValue(bref.Key, out var borderPaths))
                     continue;
+                if (bref.PathIndex < 0 || bref.PathIndex >= borderPaths.Length)
+                    continue;
 
-                foreach (var seg in borderPaths)
+                var seg = borderPaths[bref.PathIndex];
+                var ordered = bref.Reversed ? seg.Reverse().ToArray() : seg;
+                int start = points.Count > 0 ? 1 : 0;
+                for (int i = start; i < ordered.Length; i++)
                 {
-                    var ordered = bref.Reversed ? seg.Reverse().ToArray() : seg;
-                    int start = points.Count > 0 ? 1 : 0;
-                    for (int i = start; i < ordered.Length; i++)
-                    {
-                        var pt = ordered[i];
-                        if (mapHeight > 0)
-                            points.Add([mapHeight - pt[1], pt[0]]);
-                        else
-                            points.Add([pt[0], pt[1]]);
-                    }
+                    var pt = ordered[i];
+                    if (mapHeight > 0)
+                        points.Add([mapHeight - pt[1], pt[0]]);
+                    else
+                        points.Add([pt[0], pt[1]]);
                 }
             }
 
