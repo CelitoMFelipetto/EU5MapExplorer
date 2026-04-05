@@ -14,6 +14,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import * as L from 'leaflet';
 import { MapService } from './map.service';
+import { BorderLayerService } from './border-layer.service';
 import { ProvinceComponent } from './province/province.component';
 import { MAP_PANES } from './map-panes';
 import { PROVINCE_DTO } from './map-tokens';
@@ -154,8 +155,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   @ViewChild('locationHost', { read: ViewContainerRef })
   locationHost!: ViewContainerRef;
 
-  protected readonly mapService = inject(MapService);
-  private readonly destroyRef = inject(DestroyRef);
+  protected readonly mapService     = inject(MapService);
+  private readonly borderLayerService = inject(BorderLayerService);
+  private readonly destroyRef       = inject(DestroyRef);
   private map?: L.Map;
   private provinceRefs: ComponentRef<ProvinceComponent>[] = [];
 
@@ -253,6 +255,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private renderProvinces(provinces: ProvinceDto[]): void {
+    // Register border polylines before spawning province components so all
+    // polylines exist when location components start reacting to highlights.
+    this.borderLayerService.registerArea(provinces);
+
     for (const province of provinces) {
       const injector = Injector.create({
         providers: [{ provide: PROVINCE_DTO, useValue: province }],

@@ -8,14 +8,12 @@ import { MapHighlightService } from '../map-highlight.service';
 import { MapService } from '../map.service';
 
 const regularStyle: L.PolylineOptions = {
-  color: '#AAA',
-  weight: 1,
+  weight: 0,
   fillOpacity: 0.5,
 };
 
 const highlightStyle: L.PolylineOptions = {
-  color: '#fff43d',
-  weight: 3,
+  weight: 0,
   fillOpacity: 0.7,
 };
 

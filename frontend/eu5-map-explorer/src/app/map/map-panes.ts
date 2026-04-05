@@ -7,11 +7,11 @@
  *
  *   400 — overlayPane   (built-in, SVG tile layer)
  *   401 — locationsPane (filled location polygons)
- *   402 — provincesPane (province boundary outlines)
+ *   402 — bordersPane   (shared border polylines — province + location outlines)
  *   403 — cityIconsPane (city rank icons at city positions)
  */
 export const MAP_PANES = {
-  locations:        { name: 'locationsPane',  zIndex: 401 },
-  provinceOutlines: { name: 'provincesPane',  zIndex: 402 },
-  cityIcons:        { name: 'cityIconsPane',  zIndex: 403 },
+  locations:  { name: 'locationsPane', zIndex: 401 },
+  borders:    { name: 'bordersPane',   zIndex: 402 },
+  cityIcons:  { name: 'cityIconsPane', zIndex: 403 },
 } as const;

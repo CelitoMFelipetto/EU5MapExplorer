@@ -13,6 +13,11 @@ export interface CityPosition {
 
 export type LocationRank = 'city' | 'town' | 'rural_settlement';
 
+export interface BorderKeyRef {
+  key: string;
+  pathIndex: number;
+}
+
 export interface LocationDto {
   /** Location name (e.g. 'stockholm'). */
   id: string;
@@ -36,6 +41,8 @@ export interface LocationDto {
   city_position: CityPosition | null;
   /** Leaflet-ready polygon paths — coordinates already converted to [lat, lng]. */
   paths: PolygonPath;
+  /** Unique border segment references (key + pathIndex) for this location's outline. */
+  borderKeys: BorderKeyRef[];
   /** The province this location belongs to. */
   province: ProvinceDto;
 }
@@ -54,6 +61,8 @@ export interface ProvinceDto {
   paths: PolygonPath;
   /** Bounding box in pixel coordinates for future viewport culling. */
   bounds: ProvinceBounds;
+  /** Unique border segment references (key + pathIndex) for this province's outline. */
+  borderKeys: BorderKeyRef[];
   /** All locations that belong to this province. */
   locations: LocationDto[];
 }

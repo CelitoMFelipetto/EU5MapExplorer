@@ -5,6 +5,7 @@ import * as L from 'leaflet';
 import {
   ApiBorderRing,
   ApiMapResponse,
+  BorderKeyRef,
   LocationDto,
   MapDataDto,
   PathCoordinates,
@@ -102,6 +103,9 @@ export class MapService {
   /** Cache of border paths keyed by "locA|locB". Persists across area loads. */
   private readonly borderCache = new Map<string, number[][][]>();
 
+  /** Public read-only access to border cache for BorderLayerService. */
+  get borders(): ReadonlyMap<string, number[][][]> { return this.borderCache; }
+
   private readonly MAX_LOADED_AREAS = 400;
   private readonly loadedAreas = new Set<string>();
   private readonly queuedAreas = new Set<string>();
@@ -178,6 +182,22 @@ export class MapService {
         return points;
       });
 
+    // Extract unique (key, pathIndex) pairs from border rings for polyline drawing
+    const extractBorderKeys = (rings: ApiBorderRing[]): BorderKeyRef[] => {
+      const seen = new Set<string>();
+      const result: BorderKeyRef[] = [];
+      for (const ring of rings) {
+        for (const ref of ring.borders) {
+          const id = `${ref.key}/${ref.pathIndex ?? 0}`;
+          if (!seen.has(id)) {
+            seen.add(id);
+            result.push({ key: ref.key, pathIndex: ref.pathIndex ?? 0 });
+          }
+        }
+      }
+      return result;
+    };
+
     const provinces: ProvinceDto[] = [];
 
     for (const apiProvince of response.provinces) {
@@ -185,6 +205,7 @@ export class MapService {
         id: apiProvince.name,
         paths: reconstructPaths(apiProvince.borderRings),
         bounds: apiProvince.bounds,
+        borderKeys: extractBorderKeys(apiProvince.borderRings),
         locations: [],
       };
 
@@ -199,6 +220,7 @@ export class MapService {
           rank: loc.rank,
           city_position: loc.city_position ?? null,
           paths: reconstructPaths(loc.borderRings),
+          borderKeys: extractBorderKeys(loc.borderRings),
           province: provinceDto,
         };
         return locationDto;
