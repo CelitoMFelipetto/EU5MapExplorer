@@ -5,10 +5,10 @@ import { MapHighlightService } from './map-highlight.service';
 import { MapService } from './map.service';
 import { ProvinceDto } from './models/location.dto';
 
-const locationBorderStyle: L.PolylineOptions = { color: '#aaa', weight: 0.5, opacity: 0.7 };
-const provinceBorderStyle:  L.PolylineOptions = { color: '#777', weight: 1.5, opacity: 0.85 };
-const locationHighlightStyle: L.PolylineOptions = { color: '#fff43d', weight: 2,   opacity: 1 };
-const provinceHighlightStyle:  L.PolylineOptions = { color: '#333',    weight: 2.5, opacity: 1 };
+const locationBorderStyle: L.PolylineOptions = { color: '#aaa', weight: 2, opacity: 0.7 };
+const provinceBorderStyle: L.PolylineOptions = { color: '#777', weight: 2, opacity: 0.85 };
+const locationHighlightStyle: L.PolylineOptions = { color: '#fff43d', weight: 3, opacity: 1 };
+const provinceHighlightStyle: L.PolylineOptions = { color: '#333', weight: 3, opacity: 1 };
 
 /**
  * Manages shared border polylines for the entire map.
@@ -20,7 +20,7 @@ const provinceHighlightStyle:  L.PolylineOptions = { color: '#333',    weight: 2
  */
 @Injectable({ providedIn: 'root' })
 export class BorderLayerService {
-  private readonly mapService   = inject(MapService);
+  private readonly mapService = inject(MapService);
   private readonly mapHighlight = inject(MapHighlightService);
 
   /** "key/pathIndex" → Leaflet polyline */
