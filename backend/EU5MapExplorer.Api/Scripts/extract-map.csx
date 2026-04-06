@@ -79,16 +79,16 @@ var provinceDbIds = new Dictionary<(string area, string province), int>();
 var locationDbIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
 // locationColors: parallel to the index used in colorMap
-// (areaName, provinceName, locationName, r, g, b, hex)
+// (areaName, provinceName, locationName, r, g, b, hex, topography)
 var locationColors =
-    new List<(string area, string province, string location, byte r, byte g, byte b, string hex)>();
+    new List<(string area, string province, string location, byte r, byte g, byte b, string hex, string topography)>();
 
 using (
     var cmd = new NpgsqlCommand(
         @"
     SELECT a.""Id"", a.""Name"", a.""SubContinent"",
            p.""Id"", p.""Name"",
-           l.""Id"", l.""Name"", l.""Color""
+           l.""Id"", l.""Name"", l.""Color"", l.""Topography""
     FROM areas a
     JOIN game_version_areas gva ON gva.""AreaId"" = a.""Id""
     JOIN provinces p ON p.""AreaId"" = a.""Id""
@@ -112,6 +112,7 @@ using (
         var locationId = reader.GetInt32(5);
         var locationName = reader.GetString(6);
         var colorHex = reader.GetString(7);
+        var topography = reader.GetString(8);
 
         areaDbIds.TryAdd(areaName, areaId);
         areaSubContinents.TryAdd(areaName, subContinent);
@@ -127,7 +128,7 @@ using (
         var r = Convert.ToByte(colorHex.Substring(0, 2), 16);
         var g = Convert.ToByte(colorHex.Substring(2, 2), 16);
         var b = Convert.ToByte(colorHex.Substring(4, 2), 16);
-        locationColors.Add((areaName, provinceName, locationName, r, g, b, colorHex));
+        locationColors.Add((areaName, provinceName, locationName, r, g, b, colorHex, topography));
     }
 }
 
@@ -254,6 +255,69 @@ Console.WriteLine(
     $"  {relevantBorderKeys.Count} relevant border groups (filtered from {borderEdges.Count})."
 );
 
+// ── Water-border helpers ────────────────────────────────────────────────────
+
+// Topography values that represent water (mirrors MapService.isWaterLocation).
+static bool IsWaterTopography(string t) =>
+    t is "lakes" or "inland_sea" or "ocean" or "coastal_ocean"
+       or "narrows" or "ocean_wasteland" or "deep_ocean";
+
+// Returns true when both sides of a border are water (or one side is the map edge).
+bool IsWaterBorder(int idxA, int idxB)
+{
+    bool aWater = idxA < 0 || IsWaterTopography(locationColors[idxA].topography);
+    bool bWater = idxB < 0 || IsWaterTopography(locationColors[idxB].topography);
+    return aWater && bWater;
+}
+
+// Maximum perpendicular distance from any interior point to the chord start→end.
+// Uses the cross-product formula: d = |v × w| / |v|  where v = end-start, w = p-start.
+static double MaxChordDeviation(List<GdPoint> path)
+{
+    if (path.Count <= 2) return 0.0;
+    double dx = path[^1].X - path[0].X;
+    double dy = path[^1].Y - path[0].Y;
+    double len = Math.Sqrt(dx * dx + dy * dy);
+    if (len < 1e-9) return 0.0;
+    double max = 0.0;
+    for (int i = 1; i < path.Count - 1; i++)
+    {
+        double wx = path[i].X - path[0].X;
+        double wy = path[i].Y - path[0].Y;
+        double d = Math.Abs(dx * wy - dy * wx) / len;
+        if (d > max) max = d;
+    }
+    return max;
+}
+
+// Uniformly decimate a simplified path to at most maxPts points, always keeping
+// first and last.
+static int[][] DecimateTo(int[][] pts, int maxPts)
+{
+    if (pts.Length <= maxPts) return pts;
+    var result = new int[maxPts][];
+    result[0] = pts[0];
+    result[maxPts - 1] = pts[^1];
+    for (int i = 1; i < maxPts - 1; i++)
+    {
+        int srcIdx = (int)Math.Round((double)i * (pts.Length - 1) / (maxPts - 1));
+        result[i] = pts[srcIdx];
+    }
+    return result;
+}
+
+// Simplify a single traced path for a water–water border.
+// Straight (max chord deviation ≤ 1.5 px) → 2 points.
+// Curved → RDP at epsilon 2.0, capped at 6 points.
+int[][] SimplifyWaterPath(List<GdPoint> path)
+{
+    if (path.Count == 0) return [];
+    if (MaxChordDeviation(path) <= 1.5)
+        return [new[] { path[0].X, path[0].Y }, new[] { path[^1].X, path[^1].Y }];
+    var simplified = RdpSimplifier.Simplify(path, 2.0);
+    return DecimateTo(simplified, 6);
+}
+
 var tracedBorders = new ConcurrentDictionary<(int, int), int[][][]>();
 // rightSideIdx per (idxA, idxB, pathIdx) — computed from original pre-RDP path so
 // the unit-length axis-aligned steps give a reliable right-normal sample.
@@ -276,8 +340,9 @@ Parallel.ForEach(
                 borderRightSideIdx[(borderKey.Item1, borderKey.Item2, pi)] = rsi;
             }
         }
+        bool waterBorder = IsWaterBorder(borderKey.Item1, borderKey.Item2);
         tracedBorders[borderKey] = tracedPaths
-            .Select(p => RdpSimplifier.Simplify(p, 0.7))
+            .Select(p => waterBorder ? SimplifyWaterPath(p) : RdpSimplifier.Simplify(p, 0.7))
             .ToArray();
     }
 );
@@ -375,7 +440,7 @@ var areaProvinceSets = new Dictionary<string, Dictionary<string, HashSet<int>>>(
 );
 for (int ci = 0; ci < locationColors.Count; ci++)
 {
-    var (aName, pName, locName, _, _, _, _) = locationColors[ci];
+    var (aName, pName, locName, _, _, _, _, _) = locationColors[ci];
     if (!areaProvinceSets.TryGetValue(aName, out var provSets))
         areaProvinceSets[aName] = provSets = new(StringComparer.OrdinalIgnoreCase);
     if (!provSets.TryGetValue(pName, out var idxSet))
