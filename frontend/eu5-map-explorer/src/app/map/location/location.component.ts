@@ -18,10 +18,11 @@ const highlightStyle: L.PolylineOptions = {
   fillOpacity: 0.7,
 };
 
-function tooltipContent(location: LocationDto, mode: MapMode): string {
+/** Returns the tooltip string, or null if there is nothing worth showing. */
+function tooltipContent(location: LocationDto, mode: MapMode): string | null {
   if (mode === 'locations') return location.id;
   const value = location[mode];
-  return value ?? '—';
+  return value != null ? String(value) : null;
 }
 
 /**
@@ -42,6 +43,7 @@ function tooltipContent(location: LocationDto, mode: MapMode): string {
 export class LocationComponent implements OnDestroy {
   private readonly polygon: L.Polygon;
   private readonly cityMarker: L.Marker | null = null;
+  private readonly goodsMarker: L.Marker | null = null;
 
   constructor() {
     const location = inject(LOCATION_DTO);
@@ -74,33 +76,46 @@ export class LocationComponent implements OnDestroy {
 
     // ── Highlight + tooltip effects (non-lakes only) ──────────────────────────
     if (location.topography !== 'lakes') {
-      const locationId = location.id;
       const tooltip = L.tooltip({ sticky: false });
+      const center = this.polygon.getBounds().getCenter();
 
-      // Update tooltip text whenever the mode changes so hovering always
-      // shows the value relevant to the currently selected layer.
-      effect(() => {
-        tooltip.setContent(tooltipContent(location, mapService.mapMode()));
-      });
+      if (location.city_position != null) {
+        // Full highlight behaviour: fires global signal → borders turn gold, fill brightens.
+        const locationId = location.id;
 
-      this.polygon.on({
-        mouseover: () => mapHighlight.highlight(locationId),
-        mouseout: () => mapHighlight.clear(),
-      });
+        this.polygon.on({
+          mouseover: () => mapHighlight.highlight(locationId),
+          mouseout:  () => mapHighlight.clear(),
+        });
 
-      // Both highlight style and tooltip visibility are driven solely by the
-      // signal. If mouseout is ever missed, the next mouseover on any location
-      // changes the signal, this effect re-runs, and the stale tooltip is removed.
-      effect(() => {
-        if (mapHighlight.highlightedLocationId() === locationId) {
-          this.polygon.setStyle({ ...highlightStyle });
-          this.polygon.bringToFront();
-          tooltip.setLatLng(this.polygon.getBounds().getCenter()).addTo(map);
-        } else {
-          this.polygon.setStyle({ ...regularStyle });
-          tooltip.remove();
-        }
-      });
+        effect(() => {
+          const isHighlighted = mapHighlight.highlightedLocationId() === locationId;
+          if (isHighlighted) {
+            this.polygon.setStyle({ ...highlightStyle });
+            this.polygon.bringToFront();
+            const content = tooltipContent(location, mapService.mapMode());
+            if (content != null) {
+              tooltip.setContent(content).setLatLng(center).addTo(map);
+            }
+          } else {
+            this.polygon.setStyle({ ...regularStyle });
+            tooltip.remove();
+          }
+        });
+      } else {
+        // No city position (impassable, wasteland, etc.) — tooltip only, no highlight.
+        // Still clears any lingering highlight from a previously hovered location.
+        this.polygon.on({
+          mouseover: () => {
+            mapHighlight.clear();
+            const content = tooltipContent(location, mapService.mapMode());
+            if (content != null) {
+              tooltip.setContent(content).setLatLng(center).addTo(map);
+            }
+          },
+          mouseout: () => tooltip.remove(),
+        });
+      }
     }
 
     // ── City rank icon (non-lakes with a city_position) ───────────────────────
@@ -142,10 +157,51 @@ export class LocationComponent implements OnDestroy {
         }
       });
     }
+
+    // ── Goods / raw material icon (locations with a unit_position and raw_material) ──
+    /** Some raw materials have no icon — fall back to the closest equivalent. */
+    const GOODS_ICON_ALIASES: Record<string, string> = { millet: 'sturdy_grains' };
+
+    if (location.unit_position && location.raw_material) {
+      const unitPos = location.unit_position;
+      const lat = mapService.mapHeight - unitPos.y;
+      const lng = unitPos.x;
+      const rawMaterial = GOODS_ICON_ALIASES[location.raw_material] ?? location.raw_material;
+
+      const iconSize = 24;
+      const icon = L.divIcon({
+        html: `<img src="goods/${rawMaterial}.png" style="width:${iconSize}px;height:${iconSize}px;display:block;" />`,
+        iconSize: [iconSize, iconSize],
+        iconAnchor: [iconSize / 2, iconSize / 2],
+        className: '',
+      });
+
+      this.goodsMarker = L.marker([lat, lng], {
+        icon,
+        pane: MAP_PANES.goodsIcons.name,
+        interactive: false,
+      });
+
+      const goodsMarker = this.goodsMarker;
+
+      // Show only when zoom > 0.5, viewport visible, AND raw_material mode is active.
+      effect(() => {
+        if (
+          mapService.zoom() > .5 &&
+          mapService.mapMode() === 'raw_material' &&
+          viewportCulling.visibleProvinceIds().has(provinceId)
+        ) {
+          goodsMarker.addTo(map);
+        } else {
+          goodsMarker.remove();
+        }
+      });
+    }
   }
 
   ngOnDestroy(): void {
     this.polygon.remove();
     this.cityMarker?.remove();
+    this.goodsMarker?.remove();
   }
 }

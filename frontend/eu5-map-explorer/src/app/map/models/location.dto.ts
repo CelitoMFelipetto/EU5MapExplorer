@@ -39,6 +39,11 @@ export interface LocationDto {
    * Null for locations that have no city object (e.g. lakes, wastelands).
    */
   city_position: CityPosition | null;
+  /**
+   * Unit stack position in game world space — used as anchor for goods icons.
+   * Null for water/impassable locations.
+   */
+  unit_position: CityPosition | null;
   /** Leaflet-ready polygon paths — coordinates already converted to [lat, lng]. */
   paths: PolygonPath;
   /** Unique border segment references (key + pathIndex) for this location's outline. */
@@ -101,6 +106,7 @@ export interface ApiLocationDto {
    * Null for locations with no city object (e.g. lakes, wastelands).
    */
   city_position: CityPosition | null;
+  unit_position: CityPosition | null;
   /** Border rings referencing shared border segments. */
   borderRings: ApiBorderRing[];
 }

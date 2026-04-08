@@ -92,7 +92,8 @@ export const COLOR_LEGENDS: Record<Exclude<MapMode, 'locations'>, Record<string,
     olives: '#486600',  // Olives
     potatoes: '#ffae6a',  // Potatoes
     rice: '#64804e',  // Rice
-    sturdy_grains: '#cccccc',  // Sturdy Grains
+    sturdy_grains: '#493d66',  // Sturdy Grains
+    millet: '#493d66',         // Millet (alias for Sturdy Grains)
     wheat: '#d4cc13',  // Wheat
     wild_game: '#ded15d',  // Wild Game
     wool: '#8a9999',  // Wool

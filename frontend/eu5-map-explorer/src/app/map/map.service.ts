@@ -15,6 +15,11 @@ import { COLOR_LEGENDS, LEGEND_DEFAULT_COLOR, MAP_MODES, MapMode } from './map-m
 
 const WATER_COLOR = '#11a9ec';
 
+/** Game data sometimes uses names that differ from our icon/legend keys. */
+const RAW_MATERIAL_ALIASES: Record<string, string> = {
+  goods_gold: 'gold',
+};
+
 const SESSION_KEYS = {
   zoom: 'eu5map_zoom',
   pan: 'eu5map_pan',   // JSON { x: number; y: number }
@@ -221,9 +226,12 @@ export class MapService {
           topography: loc.topography,
           climate: loc.climate,
           vegetation: loc.vegetation,
-          raw_material: loc.raw_material,
+          raw_material: loc.raw_material != null
+            ? (RAW_MATERIAL_ALIASES[loc.raw_material] ?? loc.raw_material)
+            : null,
           rank: loc.rank,
           city_position: loc.city_position ?? null,
+          unit_position: loc.unit_position ?? null,
           paths: reconstructPaths(loc.borderRings),
           borderKeys: extractBorderKeys(loc.borderRings),
           province: provinceDto,

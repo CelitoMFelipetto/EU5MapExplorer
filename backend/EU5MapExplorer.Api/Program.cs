@@ -102,6 +102,9 @@ app.MapGet(
                                 city_position = (loc.CityX.HasValue && loc.CityY.HasValue)
                                     ? new { x = loc.CityX.Value, y = loc.CityY.Value }
                                     : null as object,
+                                unit_position = (loc.UnitX.HasValue && loc.UnitY.HasValue)
+                                    ? new { x = loc.UnitX.Value, y = loc.UnitY.Value }
+                                    : null as object,
                                 borderRings = loc.BorderRings,
                             })
                             .ToArray(),

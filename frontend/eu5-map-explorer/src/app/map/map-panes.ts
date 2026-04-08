@@ -5,13 +5,15 @@
  * All custom panes live just above it so the SVG tile layer stays below,
  * and each layer is drawn on top of the previous one.
  *
- *   400 — overlayPane   (built-in, SVG tile layer)
- *   401 — locationsPane (filled location polygons)
- *   402 — bordersPane   (shared border polylines — province + location outlines)
- *   403 — cityIconsPane (city rank icons at city positions)
+ *   400 — overlayPane    (built-in, SVG tile layer)
+ *   401 — locationsPane  (filled location polygons)
+ *   402 — bordersPane    (shared border polylines — province + location outlines)
+ *   403 — cityIconsPane  (city rank icons at city positions)
+ *   404 — goodsIconsPane (raw material icons at unit positions)
  */
 export const MAP_PANES = {
-  locations:  { name: 'locationsPane', zIndex: 401 },
-  borders:    { name: 'bordersPane',   zIndex: 402 },
-  cityIcons:  { name: 'cityIconsPane', zIndex: 403 },
+  locations:  { name: 'locationsPane',  zIndex: 401 },
+  borders:    { name: 'bordersPane',    zIndex: 402 },
+  cityIcons:  { name: 'cityIconsPane',  zIndex: 403 },
+  goodsIcons: { name: 'goodsIconsPane', zIndex: 404 },
 } as const;
