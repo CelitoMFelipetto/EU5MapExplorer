@@ -6,6 +6,7 @@ import { MapMode } from '../map-mode';
 import { LOCATION_DTO } from '../map-tokens';
 import { MapHighlightService } from '../map-highlight.service';
 import { MapService } from '../map.service';
+import { ViewportCullingService } from '../viewport-culling.service';
 
 const regularStyle: L.PolylineOptions = {
   weight: 0,
@@ -46,6 +47,7 @@ export class LocationComponent implements OnDestroy {
     const location = inject(LOCATION_DTO);
     const mapService = inject(MapService);
     const mapHighlight = inject(MapHighlightService);
+    const viewportCulling = inject(ViewportCullingService);
 
     this.polygon = L.polygon(location.paths, {
       ...regularStyle,
@@ -59,10 +61,20 @@ export class LocationComponent implements OnDestroy {
       this.polygon.setStyle({ fillColor: mapService.getLocationColor(location) });
     });
 
+    // ── Viewport visibility effect ────────────────────────────────────────────
+    const provinceId = location.province.id;
+    const map = mapService.map!;
+    effect(() => {
+      if (viewportCulling.visibleProvinceIds().has(provinceId)) {
+        this.polygon.addTo(map);
+      } else {
+        this.polygon.remove();
+      }
+    });
+
     // ── Highlight + tooltip effects (non-lakes only) ──────────────────────────
     if (location.topography !== 'lakes') {
       const locationId = location.id;
-      const map = mapService.map!;
       const tooltip = L.tooltip({ sticky: false });
 
       // Update tooltip text whenever the mode changes so hovering always
@@ -91,8 +103,6 @@ export class LocationComponent implements OnDestroy {
       });
     }
 
-    this.polygon.addTo(mapService.map!);
-
     // ── City rank icon (non-lakes with a city_position) ───────────────────────
     // The icon is a fixed-pixel-size image that never scales with zoom.
     // It is shown only when the zoom level exceeds 0.5.
@@ -119,14 +129,13 @@ export class LocationComponent implements OnDestroy {
       });
 
       const marker = this.cityMarker;
-      const map = mapService.map!;
 
-      // Show / hide based on the reactive zoom signal.
+      // Show / hide based on zoom AND viewport visibility.
       // CRS.Simple zoom levels are negative at full-map view (typically -2…0),
       // so the threshold is set to .5: icons appear at the default view and
       // above, and disappear only when zoomed very far out.
       effect(() => {
-        if (mapService.zoom() > .5) {
+        if (mapService.zoom() > .5 && viewportCulling.visibleProvinceIds().has(provinceId)) {
           marker.addTo(map);
         } else {
           marker.remove();

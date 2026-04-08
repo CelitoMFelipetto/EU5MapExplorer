@@ -3,6 +3,7 @@ import * as L from 'leaflet';
 import { MAP_PANES } from './map-panes';
 import { MapHighlightService } from './map-highlight.service';
 import { MapService } from './map.service';
+import { ViewportCullingService } from './viewport-culling.service';
 import { ProvinceDto } from './models/location.dto';
 
 const locationBorderStyle: L.PolylineOptions = { color: '#aaa', weight: 2, opacity: 0.7 };
@@ -22,6 +23,7 @@ const provinceHighlightStyle: L.PolylineOptions = { color: '#333', weight: 3, op
 export class BorderLayerService {
   private readonly mapService = inject(MapService);
   private readonly mapHighlight = inject(MapHighlightService);
+  private readonly viewportCulling = inject(ViewportCullingService);
 
   /** "key/pathIndex" → Leaflet polyline */
   private readonly polylines = new Map<string, L.Polyline>();
@@ -35,6 +37,8 @@ export class BorderLayerService {
   private readonly provincePolylineKeys = new Set<string>();
   /** polyline keys currently highlighted (reset on next highlight change) */
   private readonly activeKeys = new Set<string>();
+  /** polyline key → Set of province IDs that reference it (for culling) */
+  private readonly polylineProvinces = new Map<string, Set<string>>();
 
   constructor() {
     effect(() => {
@@ -67,6 +71,18 @@ export class BorderLayerService {
         }
       }
     });
+
+    // ── Viewport visibility effect ────────────────────────────────────────────
+    effect(() => {
+      const visible = this.viewportCulling.visibleProvinceIds();
+      const leafletMap = this.mapService.map;
+      if (!leafletMap) return;
+      for (const [pk, polyline] of this.polylines) {
+        const show = [...(this.polylineProvinces.get(pk) ?? [])].some(pid => visible.has(pid));
+        if (show && !leafletMap.hasLayer(polyline)) polyline.addTo(leafletMap);
+        else if (!show && leafletMap.hasLayer(polyline)) polyline.remove();
+      }
+    });
   }
 
   /**
@@ -93,6 +109,7 @@ export class BorderLayerService {
         const pk = `${key}/${pathIndex}`;
         this.provincePolylineKeys.add(pk);
         provSet.add(pk);
+        this.addPolylineProvince(pk, province.id);
         this.ensurePolyline(pk, key, pathIndex, leafletMap, flip, provinceBorderStyle);
       }
 
@@ -108,12 +125,20 @@ export class BorderLayerService {
         for (const { key, pathIndex } of location.borderKeys) {
           const pk = `${key}/${pathIndex}`;
           locSet.add(pk);
+          this.addPolylineProvince(pk, province.id);
           // Only create (not upgrade) if not already a province-level polyline
           const style = this.provincePolylineKeys.has(pk) ? provinceBorderStyle : locationBorderStyle;
           this.ensurePolyline(pk, key, pathIndex, leafletMap, flip, style);
         }
       }
     }
+  }
+
+  private addPolylineProvince(pk: string, provinceId: string): void {
+    if (!this.polylineProvinces.has(pk)) {
+      this.polylineProvinces.set(pk, new Set());
+    }
+    this.polylineProvinces.get(pk)!.add(provinceId);
   }
 
   private ensurePolyline(
@@ -134,7 +159,7 @@ export class BorderLayerService {
       ...style,
       pane: MAP_PANES.borders.name,
       interactive: false,
-    }).addTo(leafletMap);
+    });
 
     this.polylines.set(pk, polyline);
   }

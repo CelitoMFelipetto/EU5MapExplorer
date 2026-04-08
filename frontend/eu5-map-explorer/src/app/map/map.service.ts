@@ -47,11 +47,13 @@ export class MapService {
         const z = value.getZoom();
         sessionStorage.setItem(SESSION_KEYS.zoom, z.toString());
         this.zoom.set(z);
+        this.viewBounds.set(value.getBounds());
       });
 
       value.on('moveend', () => {
         const c = value.getCenter();
         sessionStorage.setItem(SESSION_KEYS.pan, JSON.stringify({ x: c.lng, y: c.lat }));
+        this.viewBounds.set(value.getBounds());
       });
     }
   }
@@ -70,6 +72,9 @@ export class MapService {
 
   /** Current zoom level — updated reactively via the zoomend Leaflet event. */
   readonly zoom = signal<number>(0);
+
+  /** Current viewport bounds — updated on zoomend and moveend. */
+  readonly viewBounds = signal<L.LatLngBounds | null>(null);
 
   /** Currently selected map display mode — initialised from sessionStorage. */
   readonly mapMode = signal<MapMode>(readSessionMode());

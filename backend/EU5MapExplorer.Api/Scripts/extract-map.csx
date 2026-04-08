@@ -81,14 +81,25 @@ var locationDbIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase
 // locationColors: parallel to the index used in colorMap
 // (areaName, provinceName, locationName, r, g, b, hex, topography)
 var locationColors =
-    new List<(string area, string province, string location, byte r, byte g, byte b, string hex, string topography)>();
+    new List<(
+        string area,
+        string province,
+        string location,
+        byte r,
+        byte g,
+        byte b,
+        string hex,
+        string topography,
+        double cityX,
+        double cityY
+    )>();
 
 using (
     var cmd = new NpgsqlCommand(
         @"
     SELECT a.""Id"", a.""Name"", a.""SubContinent"",
            p.""Id"", p.""Name"",
-           l.""Id"", l.""Name"", l.""Color"", l.""Topography""
+           l.""Id"", l.""Name"", l.""Color"", l.""Topography"", l.""CityX"", l.""CityY""
     FROM areas a
     JOIN game_version_areas gva ON gva.""AreaId"" = a.""Id""
     JOIN provinces p ON p.""AreaId"" = a.""Id""
@@ -113,6 +124,8 @@ using (
         var locationName = reader.GetString(6);
         var colorHex = reader.GetString(7);
         var topography = reader.GetString(8);
+        var cityX = reader.IsDBNull(9) ? 0.0 : reader.GetDouble(9);
+        var cityY = reader.IsDBNull(10) ? 0.0 : reader.GetDouble(10);
 
         areaDbIds.TryAdd(areaName, areaId);
         areaSubContinents.TryAdd(areaName, subContinent);
@@ -128,7 +141,9 @@ using (
         var r = Convert.ToByte(colorHex.Substring(0, 2), 16);
         var g = Convert.ToByte(colorHex.Substring(2, 2), 16);
         var b = Convert.ToByte(colorHex.Substring(4, 2), 16);
-        locationColors.Add((areaName, provinceName, locationName, r, g, b, colorHex, topography));
+        locationColors.Add(
+            (areaName, provinceName, locationName, r, g, b, colorHex, topography, cityX, cityY)
+        );
     }
 }
 
@@ -258,9 +273,35 @@ Console.WriteLine(
 // ── Water-border helpers ────────────────────────────────────────────────────
 
 // Topography values that represent water (mirrors MapService.isWaterLocation).
+
+static bool IsOceanTopography(string t) =>
+    t
+        is "inland_sea"
+            or "ocean"
+            or "coastal_ocean"
+            or "narrows"
+            or "ocean_wasteland"
+            or "deep_ocean";
+
 static bool IsWaterTopography(string t) =>
-    t is "lakes" or "inland_sea" or "ocean" or "coastal_ocean"
-       or "narrows" or "ocean_wasteland" or "deep_ocean";
+    t
+        is "lakes"
+            or "inland_sea"
+            or "ocean"
+            or "coastal_ocean"
+            or "narrows"
+            or "ocean_wasteland"
+            or "deep_ocean";
+
+bool IsLocationIgnoredForProvinceBorders(int id)
+{
+    if (id < 0)
+        return false; // map edge — not a real location
+    var loc = locationColors[id];
+    // Ignore locations with no city position that are not ocean topography
+    // (these are lakes, impassable terrain, etc. — they act as holes in the province)
+    return loc.cityX == 0 && loc.cityY == 0 && !IsOceanTopography(loc.topography);
+}
 
 // Returns true when both sides of a border are water (or one side is the map edge).
 bool IsWaterBorder(int idxA, int idxB)
@@ -274,18 +315,21 @@ bool IsWaterBorder(int idxA, int idxB)
 // Uses the cross-product formula: d = |v × w| / |v|  where v = end-start, w = p-start.
 static double MaxChordDeviation(List<GdPoint> path)
 {
-    if (path.Count <= 2) return 0.0;
+    if (path.Count <= 2)
+        return 0.0;
     double dx = path[^1].X - path[0].X;
     double dy = path[^1].Y - path[0].Y;
     double len = Math.Sqrt(dx * dx + dy * dy);
-    if (len < 1e-9) return 0.0;
+    if (len < 1e-9)
+        return 0.0;
     double max = 0.0;
     for (int i = 1; i < path.Count - 1; i++)
     {
         double wx = path[i].X - path[0].X;
         double wy = path[i].Y - path[0].Y;
         double d = Math.Abs(dx * wy - dy * wx) / len;
-        if (d > max) max = d;
+        if (d > max)
+            max = d;
     }
     return max;
 }
@@ -294,7 +338,8 @@ static double MaxChordDeviation(List<GdPoint> path)
 // first and last.
 static int[][] DecimateTo(int[][] pts, int maxPts)
 {
-    if (pts.Length <= maxPts) return pts;
+    if (pts.Length <= maxPts)
+        return pts;
     var result = new int[maxPts][];
     result[0] = pts[0];
     result[maxPts - 1] = pts[^1];
@@ -311,7 +356,8 @@ static int[][] DecimateTo(int[][] pts, int maxPts)
 // Curved → RDP at epsilon 2.0, capped at 6 points.
 int[][] SimplifyWaterPath(List<GdPoint> path)
 {
-    if (path.Count == 0) return [];
+    if (path.Count == 0)
+        return [];
     if (MaxChordDeviation(path) <= 1.5)
         return [new[] { path[0].X, path[0].Y }, new[] { path[^1].X, path[^1].Y }];
     var simplified = RdpSimplifier.Simplify(path, 2.0);
@@ -319,6 +365,7 @@ int[][] SimplifyWaterPath(List<GdPoint> path)
 }
 
 var tracedBorders = new ConcurrentDictionary<(int, int), int[][][]>();
+
 // rightSideIdx per (idxA, idxB, pathIdx) — computed from original pre-RDP path so
 // the unit-length axis-aligned steps give a reliable right-normal sample.
 var borderRightSideIdx = new ConcurrentDictionary<(int, int, int), int>();
@@ -414,7 +461,9 @@ Parallel.ForEach(
                 continue;
             var path = paths[pathIdx];
             var rightSideIdx = borderRightSideIdx.GetValueOrDefault(
-                (idxKey.Item1, idxKey.Item2, pathIdx), -1);
+                (idxKey.Item1, idxKey.Item2, pathIdx),
+                -1
+            );
             var reversed = BorderSideHelper.IsReversedForLocation(locIdx, rightSideIdx);
             var startPt = reversed
                 ? new GdPoint(path[^1][0], path[^1][1])
@@ -422,7 +471,9 @@ Parallel.ForEach(
             var endPt = reversed
                 ? new GdPoint(path[0][0], path[0][1])
                 : new GdPoint(path[^1][0], path[^1][1]);
-            ringEntries.Add(new RingBuilder.BorderEntry(keyName, pathIdx, reversed, startPt, endPt));
+            ringEntries.Add(
+                new RingBuilder.BorderEntry(keyName, pathIdx, reversed, startPt, endPt)
+            );
         }
 
         locationRings[locIdx] = RingBuilder.BuildRings(ringEntries);
@@ -440,7 +491,7 @@ var areaProvinceSets = new Dictionary<string, Dictionary<string, HashSet<int>>>(
 );
 for (int ci = 0; ci < locationColors.Count; ci++)
 {
-    var (aName, pName, locName, _, _, _, _, _) = locationColors[ci];
+    var (aName, pName, locName, _, _, _, _, _, _, _) = locationColors[ci];
     if (!areaProvinceSets.TryGetValue(aName, out var provSets))
         areaProvinceSets[aName] = provSets = new(StringComparer.OrdinalIgnoreCase);
     if (!provSets.TryGetValue(pName, out var idxSet))
@@ -472,12 +523,28 @@ foreach (var aName in filteredAreaNames)
                 var (idxA, idxB) = idxKey;
                 bool aInProv = idxA >= 0 && provIndices.Contains(idxA);
                 bool bInProv = idxB >= 0 && provIndices.Contains(idxB);
-                if (aInProv == bInProv)
-                    continue;
-
-                var keyName = BorderKeyName(idxA, idxB);
-                for (int pi = 0; pi < paths.Length; pi++)
-                    provOutlineEntries.Add((keyName, idxKey, pi));
+                bool aIsIgnored = IsLocationIgnoredForProvinceBorders(idxA);
+                bool bIsIgnored = IsLocationIgnoredForProvinceBorders(idxB);
+                if (
+                    (
+                        aInProv != bInProv
+                        && (
+                            (!aIsIgnored && !bIsIgnored)
+                            || (aInProv && !aIsIgnored && bIsIgnored)
+                            || (bInProv && !bIsIgnored && aIsIgnored)
+                        )
+                    )
+                    || (
+                        (aInProv && bInProv)
+                        && (aIsIgnored || bIsIgnored)
+                        && !(aIsIgnored && bIsIgnored)
+                    )
+                )
+                {
+                    var keyName = BorderKeyName(idxA, idxB);
+                    for (int pi = 0; pi < paths.Length; pi++)
+                        provOutlineEntries.Add((keyName, idxKey, pi));
+                }
             }
 
             // Build RingBuilder entries using geometric side detection
@@ -490,7 +557,9 @@ foreach (var aName in filteredAreaNames)
                 var path = paths[pathIdx];
                 var insideIdx = provIndices.Contains(idxKey.Item1) ? idxKey.Item1 : idxKey.Item2;
                 var rightSideIdx = borderRightSideIdx.GetValueOrDefault(
-                    (idxKey.Item1, idxKey.Item2, pathIdx), -1);
+                    (idxKey.Item1, idxKey.Item2, pathIdx),
+                    -1
+                );
                 var reversed = BorderSideHelper.IsReversedForLocation(insideIdx, rightSideIdx);
                 var startPt = reversed
                     ? new GdPoint(path[^1][0], path[^1][1])
@@ -567,7 +636,17 @@ foreach (var (locIdx, rings) in locationRings)
         continue;
     }
     var borderRings = rings
-        .Select(ring => new { Borders = ring.Borders.Select(b => new { b.Key, b.Reversed, b.PathIndex }).ToArray() })
+        .Select(ring => new
+        {
+            Borders = ring
+                .Borders.Select(b => new
+                {
+                    b.Key,
+                    b.Reversed,
+                    b.PathIndex,
+                })
+                .ToArray(),
+        })
         .ToArray();
 
     using var cmd = new NpgsqlCommand(
@@ -592,7 +671,17 @@ foreach (var ((aName, provName), (provRings, maxN, maxS, maxE, maxW)) in provinc
         continue;
     }
     var borderRings = provRings
-        .Select(ring => new { Borders = ring.Borders.Select(b => new { b.Key, b.Reversed, b.PathIndex }).ToArray() })
+        .Select(ring => new
+        {
+            Borders = ring
+                .Borders.Select(b => new
+                {
+                    b.Key,
+                    b.Reversed,
+                    b.PathIndex,
+                })
+                .ToArray(),
+        })
         .ToArray();
 
     using var cmd = new NpgsqlCommand(

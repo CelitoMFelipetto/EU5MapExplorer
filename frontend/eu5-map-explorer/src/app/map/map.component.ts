@@ -15,6 +15,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import * as L from 'leaflet';
 import { MapService } from './map.service';
 import { BorderLayerService } from './border-layer.service';
+import { ViewportCullingService } from './viewport-culling.service';
 import { ProvinceComponent } from './province/province.component';
 import { MAP_PANES } from './map-panes';
 import { PROVINCE_DTO } from './map-tokens';
@@ -157,6 +158,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected readonly mapService     = inject(MapService);
   private readonly borderLayerService = inject(BorderLayerService);
+  private readonly viewportCulling  = inject(ViewportCullingService);
   private readonly destroyRef       = inject(DestroyRef);
   private map?: L.Map;
   private provinceRefs: ComponentRef<ProvinceComponent>[] = [];
@@ -258,6 +260,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Register border polylines before spawning province components so all
     // polylines exist when location components start reacting to highlights.
     this.borderLayerService.registerArea(provinces);
+
+    // Populate the visibility registry and write the initial visible set to the
+    // signal BEFORE any LocationComponent is constructed (effects need the signal).
+    this.viewportCulling.registerProvinces(provinces);
 
     for (const province of provinces) {
       const injector = Injector.create({
