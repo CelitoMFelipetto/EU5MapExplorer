@@ -37,8 +37,11 @@ import { ProvinceDto } from './models/location.dto';
         <button
           class="mode-btn"
           [class.active]="mapService.mapMode() === mode.id"
+          [title]="mode.label"
           (click)="setMode(mode.id)">
-          {{ mode.label }}
+          <img class="layer-bg"   src="map_modes/map_mode_bg.png"    alt="">
+          <img class="layer-trim" [src]="'map_modes/' + mode.trim"   alt="">
+          <img class="layer-icon" [src]="'map_modes/' + mode.icon"   alt="">
         </button>
       }
     </div>
@@ -118,35 +121,63 @@ import { ProvinceDto } from './models/location.dto';
       transform: translateX(-50%);
       z-index: 1000;
       display: flex;
-      gap: 2px;
-      background: rgba(255, 255, 255, 0.92);
-      border: 2px solid rgba(0, 0, 0, 0.2);
+      gap: 4px;
+      background: rgba(20, 15, 10, 0.75);
+      border: 1px solid rgba(255, 220, 150, 0.25);
       border-radius: 6px;
-      padding: 4px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      padding: 6px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
     }
 
     .mode-btn {
-      padding: 5px 14px;
+      position: relative;
+      width: 57px;
+      height: 57px;
+      padding: 0;
       border: none;
-      border-radius: 4px;
       background: transparent;
-      font-family: monospace;
-      font-size: 12px;
-      font-weight: 600;
-      color: #555;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+      border-radius: 3px;
+      transition: transform 0.1s;
     }
 
     .mode-btn:hover {
-      background: rgba(0, 0, 0, 0.07);
-      color: #222;
+      transform: scale(1.08);
     }
 
-    .mode-btn.active {
-      background: #3a6ea8;
-      color: #fff;
+    .mode-btn .layer-bg,
+    .mode-btn .layer-trim,
+    .mode-btn .layer-icon {
+      position: absolute;
+      display: block;
+      pointer-events: none;
+    }
+
+    /* bg and trim fill the whole button */
+    .mode-btn .layer-bg,
+    .mode-btn .layer-trim {
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* icon is centered at ~52% of button size */
+    .mode-btn .layer-icon {
+      width: 52%;
+      height: 52%;
+      top: 24%;
+      left: 24%;
+    }
+
+    /* selected: brighten bg + trim layers */
+    .mode-btn.active .layer-bg,
+    .mode-btn.active .layer-trim {
+      filter: brightness(1.6) saturate(1.2);
+    }
+
+    /* unselected: dim slightly so selected stands out */
+    .mode-btn:not(.active) .layer-bg,
+    .mode-btn:not(.active) .layer-trim {
+      filter: brightness(0.75);
     }
   `],
 })

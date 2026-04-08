@@ -1,11 +1,15 @@
 export type MapMode = 'locations' | 'topography' | 'climate' | 'vegetation' | 'raw_material';
 
-export const MAP_MODES: { id: MapMode; label: string }[] = [
-  { id: 'locations', label: 'Locations' },
-  { id: 'topography', label: 'Topography' },
-  { id: 'climate', label: 'Climate' },
-  { id: 'vegetation', label: 'Vegetation' },
-  { id: 'raw_material', label: 'Raw Material' },
+/** Trim square image used per category. */
+const TRIM_GEOGRAPHY = 'map_mode_square.png';
+const TRIM_ECONOMY   = 'map_mode_square_mid_yellow.png';
+
+export const MAP_MODES: { id: MapMode; label: string; icon: string; trim: string }[] = [
+  { id: 'locations',    label: 'Locations',    icon: 'location.png',    trim: TRIM_GEOGRAPHY },
+  { id: 'topography',   label: 'Topography',   icon: 'topography.png',  trim: TRIM_GEOGRAPHY },
+  { id: 'climate',      label: 'Climate',      icon: 'climate.png',     trim: TRIM_GEOGRAPHY },
+  { id: 'vegetation',   label: 'Vegetation',   icon: 'vegetation.png',  trim: TRIM_GEOGRAPHY },
+  { id: 'raw_material', label: 'Raw Material', icon: 'raw_material.png', trim: TRIM_ECONOMY  },
 ];
 
 /** Fallback colour used when a metadata value has no entry in a legend. */
@@ -92,8 +96,7 @@ export const COLOR_LEGENDS: Record<Exclude<MapMode, 'locations'>, Record<string,
     olives: '#486600',  // Olives
     potatoes: '#ffae6a',  // Potatoes
     rice: '#64804e',  // Rice
-    sturdy_grains: '#493d66',  // Sturdy Grains
-    millet: '#493d66',         // Millet (alias for Sturdy Grains)
+    sturdy_grains: '#cccccc',  // Sturdy Grains
     wheat: '#d4cc13',  // Wheat
     wild_game: '#ded15d',  // Wild Game
     wool: '#8a9999',  // Wool

@@ -20,7 +20,8 @@ import { fileURLToPath } from 'url';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-const WIKI_GOODS_URL  = 'https://eu5.paradoxwikis.com/Goods';
+const WIKI_GOODS_URL     = 'https://eu5.paradoxwikis.com/Goods';
+const WIKI_MAP_MODES_URL = 'https://eu5.paradoxwikis.com/Map_modes';
 const GAME_COLORS_FILE =
   'C:/Program Files (x86)/Steam/steamapps/common/Europa Universalis V' +
   '/game/main_menu/common/named_colors/02_map.txt';
@@ -155,6 +156,50 @@ function extractGoodsFromWiki(
   return goods;
 }
 
+// ── Map modes wiki extraction ─────────────────────────────────────────────────
+
+interface MapModeIcon {
+  name:      string;
+  snakeName: string;   // derived from the image filename, e.g. Raw_material → raw_material
+  iconUrl:   string;
+}
+
+function extractMapModesFromWiki(html: string): MapModeIcon[] {
+  const { document } = new JSDOM(html).window;
+  const seen = new Set<string>();
+  const icons: MapModeIcon[] = [];
+
+  document.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src') ?? '';
+    if (!src.includes('/thumb/')) return;
+
+    // Build full-size URL: strip /thumb/ path segment and trailing /NNpx-filename
+    const absolute = src.startsWith('http')
+      ? src
+      : `https://eu5.paradoxwikis.com${src}`;
+    const iconUrl = absolute.replace('/thumb/', '/').replace(/\/\d+px-[^/]+$/, '');
+
+    // Derive snake_name from the image filename (last path segment before the Npx part)
+    const fileMatch = src.match(/\/([^/]+\.png)\/\d+px-/i);
+    if (!fileMatch) return;
+    const filename  = fileMatch[1];                          // e.g. "Raw_material.png"
+    const snakeName = filename.replace(/\.png$/i, '')        // "Raw_material"
+      .replace(/[^a-zA-Z0-9]+/g, '_')                       // spaces/dashes → _
+      .toLowerCase();                                        // "raw_material"
+
+    if (seen.has(snakeName)) return;
+    seen.add(snakeName);
+
+    // Best-effort name: use the img alt or title attribute, fall back to filename
+    const name = (img.getAttribute('alt') ?? img.getAttribute('title') ?? filename)
+      .replace(/\.png$/i, '').trim();
+
+    icons.push({ name, snakeName, iconUrl });
+  });
+
+  return icons;
+}
+
 // ── Icon download ─────────────────────────────────────────────────────────────
 
 async function downloadIcon(url: string, dest: string): Promise<void> {
@@ -191,10 +236,12 @@ async function main(): Promise<void> {
   const __filename = fileURLToPath(import.meta.url);
   const feRoot     = path.resolve(path.dirname(__filename), '..');
 
-  const publicGoodsDir = path.join(feRoot, 'public', 'goods');
-  const mapModePath    = path.join(feRoot, 'src', 'app', 'map', 'map-mode.ts');
+  const publicGoodsDir    = path.join(feRoot, 'public', 'goods');
+  const publicMapModesDir = path.join(feRoot, 'public', 'map_modes');
+  const mapModePath       = path.join(feRoot, 'src', 'app', 'map', 'map-mode.ts');
 
-  await fs.mkdir(publicGoodsDir, { recursive: true });
+  await fs.mkdir(publicGoodsDir,    { recursive: true });
+  await fs.mkdir(publicMapModesDir, { recursive: true });
 
   // ── Step 1: load game colors via jomini ───────────────────────────────────
   console.log('Initialising jomini parser...');
@@ -238,6 +285,26 @@ async function main(): Promise<void> {
   console.log('\nPatching src/app/map/map-mode.ts...');
   await patchMapMode(goods, mapModePath);
   console.log('  ✓ raw_material legend updated.');
+
+  // ── Step 6: fetch + download map mode icons ────────────────────────────────
+  console.log(`\nFetching ${WIKI_MAP_MODES_URL}...`);
+  const mapModesHtml  = await fetch(WIKI_MAP_MODES_URL).then(r => r.text());
+  const mapModeIcons  = extractMapModesFromWiki(mapModesHtml);
+  console.log(`  → ${mapModeIcons.length} map mode icons found on wiki.\n`);
+
+  console.log('Downloading map mode icons...');
+  const modeResults = await Promise.allSettled(
+    mapModeIcons.map(m =>
+      downloadIcon(m.iconUrl, path.join(publicMapModesDir, `${m.snakeName}.png`)),
+    ),
+  );
+  modeResults.forEach((r, i) => {
+    if (r.status === 'fulfilled') {
+      console.log(`  ✓ ${mapModeIcons[i].name.padEnd(36)} → public/map_modes/${mapModeIcons[i].snakeName}.png`);
+    } else {
+      console.warn(`  ✗ ${mapModeIcons[i].name.padEnd(36)}: ${(r.reason as Error).message}`);
+    }
+  });
 
   console.log('\nDone.');
 }
