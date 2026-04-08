@@ -92,6 +92,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Vegetation).HasMaxLength(64);
             e.Property(x => x.RawMaterial).HasMaxLength(64);
             e.Property(x => x.Rank).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Pops).HasColumnType("jsonb");
             e.Property(x => x.BorderRings)
              .HasColumnType("jsonb")
              .HasConversion(

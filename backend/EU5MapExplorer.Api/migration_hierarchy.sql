@@ -74,6 +74,10 @@ BEGIN
         "Rank" character varying(32) NOT NULL,
         "CityX" double precision,
         "CityY" double precision,
+        "UnitX" double precision,
+        "UnitY" double precision,
+        "Pops" jsonb,
+        "HasMarket" boolean NOT NULL DEFAULT false,
         "Paths" jsonb NOT NULL,
         CONSTRAINT "PK_locations" PRIMARY KEY ("Id"),
         CONSTRAINT "FK_locations_provinces_ProvinceId" FOREIGN KEY ("ProvinceId") REFERENCES provinces ("Id") ON DELETE CASCADE

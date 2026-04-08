@@ -225,6 +225,44 @@ else
     Console.WriteLine($"  → {cityPositions.Count} city positions loaded.");
 }
 
+// ── Step 4b: Load unit stack positions ───────────────────────────────────────
+
+Console.WriteLine("\nStep 4b: Loading unit stack positions...");
+
+var unitLocatorsPath = Path.Combine(
+    config.DataPath,
+    "in_game",
+    "gfx",
+    "map",
+    "map_objects",
+    "generated_map_object_locators_unit_stack.txt"
+);
+
+var unitPositions = new Dictionary<string, (double x, double y)>(StringComparer.OrdinalIgnoreCase);
+
+if (!File.Exists(unitLocatorsPath))
+{
+    Console.WriteLine(
+        "  [WARN] Unit stack locator file not found — unit position will be null for all locations."
+    );
+}
+else
+{
+    var unitInstanceRx = new Regex(
+        @"\{\s*id=(\w+)\s+position=\{\s*([\d.]+)\s+[\d.]+\s+([\d.]+)\s*\}",
+        RegexOptions.Singleline
+    );
+
+    foreach (Match m in unitInstanceRx.Matches(File.ReadAllText(unitLocatorsPath)))
+    {
+        var id = m.Groups[1].Value;
+        var gameX = double.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+        var gameZ = double.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
+        unitPositions[id] = (gameX, MAP_HEIGHT - gameZ);
+    }
+    Console.WriteLine($"  → {unitPositions.Count} unit stack positions loaded.");
+}
+
 // ── Step 5: Load location ranks ──────────────────────────────────────────────
 
 Console.WriteLine("\nStep 5: Loading location ranks...");
@@ -263,6 +301,82 @@ else
     Console.WriteLine($"  → {rankLookup.Count} location ranks loaded.");
 }
 
+// ── Step 5b: Load pops ───────────────────────────────────────────────────────
+
+Console.WriteLine("\nStep 5b: Loading pops...");
+
+var popsPath = Path.Combine(config.DataPath, "main_menu", "setup", "start", "06_pops.txt");
+
+// locationName → JSON array string of {type,size,culture,religion} entries
+var popsLookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+if (!File.Exists(popsPath))
+{
+    Console.WriteLine("  [WARN] Pops file not found — pops will be null for all locations.");
+}
+else
+{
+    var popsRoot = Interpreter.InterpretText(File.ReadAllText(popsPath));
+    var locationsClause = popsRoot.FindClauseDepthFirst("locations");
+    if (locationsClause != null)
+    {
+        foreach (var locClause in locationsClause.Clauses)
+        {
+            var locName = (string?)locClause.Name;
+            if (string.IsNullOrEmpty(locName)) continue;
+
+            var pops = new List<object>();
+            foreach (var popClause in locClause.Clauses)
+            {
+                if ((string?)popClause.Name != "define_pop") continue;
+                string popType = "", sizeStr = "0", popCulture = "", popReligion = "";
+                foreach (var b in popClause.Bindings)
+                {
+                    switch ((string?)b.Name)
+                    {
+                        case "type":     popType     = (string?)b.Value ?? ""; break;
+                        case "size":     sizeStr     = (string?)b.Value ?? "0"; break;
+                        case "culture":  popCulture  = (string?)b.Value ?? ""; break;
+                        case "religion": popReligion = (string?)b.Value ?? ""; break;
+                    }
+                }
+                double.TryParse(sizeStr, System.Globalization.NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out var size);
+                pops.Add(new { type = popType, size, culture = popCulture, religion = popReligion });
+            }
+            popsLookup[locName] = JsonSerializer.Serialize(pops);
+        }
+    }
+    Console.WriteLine($"  → {popsLookup.Count} locations with pop data loaded.");
+}
+
+// ── Step 5c: Load markets ─────────────────────────────────────────────────────
+
+Console.WriteLine("\nStep 5c: Loading markets...");
+
+var marketsPath = Path.Combine(config.DataPath, "main_menu", "setup", "start", "03_markets.txt");
+
+var marketLocations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+if (!File.Exists(marketsPath))
+{
+    Console.WriteLine("  [WARN] Markets file not found — HasMarket will be false for all locations.");
+}
+else
+{
+    var marketsRoot = Interpreter.InterpretText(File.ReadAllText(marketsPath));
+    var managerClause = marketsRoot.FindClauseDepthFirst("market_manager");
+    if (managerClause != null)
+    {
+        foreach (var binding in managerClause.Bindings.Cast<dynamic>())
+        {
+            if ((string?)binding.Name == "add_market")
+                marketLocations.Add((string)binding.Value);
+        }
+    }
+    Console.WriteLine($"  → {marketLocations.Count} market locations loaded.");
+}
+
 // ── Step 6: Compute content hash per area ────────────────────────────────────
 
 Console.WriteLine("\nStep 6: Computing content hashes...");
@@ -271,18 +385,30 @@ string ComputeAreaHash(string areaName, Dictionary<string, List<string>> provinc
 {
     var canonical = new
     {
-        provinces = provinces.OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+        provinces = provinces
+            .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
             .Select(kvp => new
             {
                 name = kvp.Key,
-                locations = kvp.Value.OrderBy(l => l, StringComparer.Ordinal)
+                locations = kvp
+                    .Value.OrderBy(l => l, StringComparer.Ordinal)
                     .Select(l =>
                     {
                         colorLookup.TryGetValue(l, out var hex);
                         templateLookup.TryGetValue(l, out var tmpl);
                         var rank = rankLookup.TryGetValue(l, out var r) ? r : "rural_settlement";
                         double? cx = null, cy = null;
-                        if (cityPositions.TryGetValue(l, out var cp)) { cx = cp.x; cy = cp.y; }
+                        if (cityPositions.TryGetValue(l, out var cp))
+                        {
+                            cx = cp.x;
+                            cy = cp.y;
+                        }
+                        double? ux = null, uy = null;
+                        if (unitPositions.TryGetValue(l, out var up))
+                        {
+                            ux = up.x;
+                            uy = up.y;
+                        }
                         return new
                         {
                             Name = l,
@@ -294,9 +420,15 @@ string ComputeAreaHash(string areaName, Dictionary<string, List<string>> provinc
                             Rank = rank,
                             CityX = cx,
                             CityY = cy,
+                            UnitX = ux,
+                            UnitY = uy,
+                            HasMarket = marketLocations.Contains(l),
+                            Pops = popsLookup.TryGetValue(l, out var p) ? p : null,
                         };
-                    }).ToArray(),
-            }).ToArray(),
+                    })
+                    .ToArray(),
+            })
+            .ToArray(),
     };
     var json = JsonSerializer.Serialize(canonical);
     var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json));
@@ -320,11 +452,15 @@ conn.Open();
 
 // Upsert game_version
 int gameVersionId;
-using (var cmd = new NpgsqlCommand(
-    "INSERT INTO game_versions (\"Version\", \"ExtractedAt\") "
-    + "VALUES (@version, NOW() AT TIME ZONE 'UTC') "
-    + "ON CONFLICT (\"Version\") DO UPDATE SET \"ExtractedAt\" = EXCLUDED.\"ExtractedAt\" "
-    + "RETURNING \"Id\"", conn))
+using (
+    var cmd = new NpgsqlCommand(
+        "INSERT INTO game_versions (\"Version\", \"ExtractedAt\") "
+            + "VALUES (@version, NOW() AT TIME ZONE 'UTC') "
+            + "ON CONFLICT (\"Version\") DO UPDATE SET \"ExtractedAt\" = EXCLUDED.\"ExtractedAt\" "
+            + "RETURNING \"Id\"",
+        conn
+    )
+)
 {
     cmd.Parameters.AddWithValue("version", config.GameVersion);
     gameVersionId = (int)cmd.ExecuteScalar()!;
@@ -332,20 +468,27 @@ using (var cmd = new NpgsqlCommand(
 Console.WriteLine($"  game_version id={gameVersionId} ({config.GameVersion})");
 
 // Clear existing game_version_areas links for all areas (full reload)
-using (var cmd = new NpgsqlCommand(
-    "DELETE FROM game_version_areas WHERE \"GameVersionId\" = @versionId", conn))
+using (
+    var cmd = new NpgsqlCommand(
+        "DELETE FROM game_version_areas WHERE \"GameVersionId\" = @versionId",
+        conn
+    )
+)
 {
     cmd.Parameters.AddWithValue("versionId", gameVersionId);
     cmd.ExecuteNonQuery();
 }
 
-int areasInserted = 0, areasUpdated = 0, areasReused = 0;
+int areasInserted = 0,
+    areasUpdated = 0,
+    areasReused = 0;
 
 foreach (var (aName, provMap) in allAreas)
 {
     var hash = areaHashes[aName];
     var (areaCont, areaSub, areaReg) = areaAncestry.TryGetValue(aName, out var anc)
-        ? anc : (null, null, null);
+        ? anc
+        : (null, null, null);
 
     using var tx = conn.BeginTransaction();
     try
@@ -353,8 +496,13 @@ foreach (var (aName, provMap) in allAreas)
         // Look up existing area by name
         int? existingAreaId = null;
         string? existingHash = null;
-        using (var cmd = new NpgsqlCommand(
-            "SELECT \"Id\", \"ContentHash\" FROM areas WHERE \"Name\" = @name LIMIT 1", conn, tx))
+        using (
+            var cmd = new NpgsqlCommand(
+                "SELECT \"Id\", \"ContentHash\" FROM areas WHERE \"Name\" = @name LIMIT 1",
+                conn,
+                tx
+            )
+        )
         {
             cmd.Parameters.AddWithValue("name", aName);
             using var reader = cmd.ExecuteReader();
@@ -377,10 +525,15 @@ foreach (var (aName, provMap) in allAreas)
         {
             // Area exists but hash changed — update metadata, preserve Neighbors
             areaId = existingAreaId.Value;
-            using (var cmd = new NpgsqlCommand(
-                "UPDATE areas SET \"ContentHash\" = @hash, \"Continent\" = @continent, "
-                + "\"SubContinent\" = @subContinent, \"Region\" = @region "
-                + "WHERE \"Id\" = @id", conn, tx))
+            using (
+                var cmd = new NpgsqlCommand(
+                    "UPDATE areas SET \"ContentHash\" = @hash, \"Continent\" = @continent, "
+                        + "\"SubContinent\" = @subContinent, \"Region\" = @region "
+                        + "WHERE \"Id\" = @id",
+                    conn,
+                    tx
+                )
+            )
             {
                 cmd.Parameters.AddWithValue("id", areaId);
                 cmd.Parameters.AddWithValue("hash", hash);
@@ -399,10 +552,15 @@ foreach (var (aName, provMap) in allAreas)
         else
         {
             // Brand new area
-            using (var cmd = new NpgsqlCommand(
-                "INSERT INTO areas (\"Name\", \"ContentHash\", \"Continent\", \"SubContinent\", \"Region\", \"Neighbors\") "
-                + "VALUES (@name, @hash, @continent, @subContinent, @region, '[]'::jsonb) "
-                + "RETURNING \"Id\"", conn, tx))
+            using (
+                var cmd = new NpgsqlCommand(
+                    "INSERT INTO areas (\"Name\", \"ContentHash\", \"Continent\", \"SubContinent\", \"Region\", \"Neighbors\") "
+                        + "VALUES (@name, @hash, @continent, @subContinent, @region, '[]'::jsonb) "
+                        + "RETURNING \"Id\"",
+                    conn,
+                    tx
+                )
+            )
             {
                 cmd.Parameters.AddWithValue("name", aName);
                 cmd.Parameters.AddWithValue("hash", hash);
@@ -420,9 +578,14 @@ foreach (var (aName, provMap) in allAreas)
         }
 
         // Link area to game version
-        using (var cmd = new NpgsqlCommand(
-            "INSERT INTO game_version_areas (\"GameVersionId\", \"AreaId\") "
-            + "VALUES (@versionId, @areaId) ON CONFLICT DO NOTHING", conn, tx))
+        using (
+            var cmd = new NpgsqlCommand(
+                "INSERT INTO game_version_areas (\"GameVersionId\", \"AreaId\") "
+                    + "VALUES (@versionId, @areaId) ON CONFLICT DO NOTHING",
+                conn,
+                tx
+            )
+        )
         {
             cmd.Parameters.AddWithValue("versionId", gameVersionId);
             cmd.Parameters.AddWithValue("areaId", areaId);
@@ -445,7 +608,7 @@ var totalProvinces = allAreas.Values.Sum(p => p.Count);
 var totalLocations = allAreas.Values.SelectMany(p => p.Values).Sum(l => l.Count);
 Console.WriteLine(
     $"\nDone. {areasInserted} inserted, {areasUpdated} updated, {areasReused} reused. "
-    + $"{totalProvinces} provinces, {totalLocations} locations."
+        + $"{totalProvinces} provinces, {totalLocations} locations."
 );
 
 // ── Upsert helpers ───────────────────────────────────────────────────────────
@@ -454,14 +617,20 @@ void UpsertProvincesAndLocations(
     NpgsqlConnection db,
     NpgsqlTransaction transaction,
     int areaId,
-    Dictionary<string, List<string>> provinces)
+    Dictionary<string, List<string>> provinces
+)
 {
     foreach (var (pName, locNames) in provinces)
     {
         // Try to find existing province — preserve BorderRings + bounds
         int provinceId;
-        using (var cmd = new NpgsqlCommand(
-            "SELECT \"Id\" FROM provinces WHERE \"AreaId\" = @areaId AND \"Name\" = @name LIMIT 1", db, transaction))
+        using (
+            var cmd = new NpgsqlCommand(
+                "SELECT \"Id\" FROM provinces WHERE \"AreaId\" = @areaId AND \"Name\" = @name LIMIT 1",
+                db,
+                transaction
+            )
+        )
         {
             cmd.Parameters.AddWithValue("areaId", areaId);
             cmd.Parameters.AddWithValue("name", pName);
@@ -481,8 +650,11 @@ void UpsertProvincesAndLocations(
         {
             using var cmd = new NpgsqlCommand(
                 "INSERT INTO provinces (\"AreaId\", \"Name\", \"BorderRings\", \"MaxN\", \"MaxS\", \"MaxE\", \"MaxW\") "
-                + "VALUES (@areaId, @name, '[]'::jsonb, 0, 0, 0, 0) "
-                + "RETURNING \"Id\"", db, transaction);
+                    + "VALUES (@areaId, @name, '[]'::jsonb, 0, 0, 0, 0) "
+                    + "RETURNING \"Id\"",
+                db,
+                transaction
+            );
             cmd.Parameters.AddWithValue("areaId", areaId);
             cmd.Parameters.AddWithValue("name", pName);
             provinceId = (int)cmd.ExecuteScalar()!;
@@ -494,17 +666,35 @@ void UpsertProvincesAndLocations(
             templateLookup.TryGetValue(locName, out var tmpl);
             var rank = rankLookup.TryGetValue(locName, out var r) ? r : "rural_settlement";
             double? cx = null, cy = null;
-            if (cityPositions.TryGetValue(locName, out var cp)) { cx = cp.x; cy = cp.y; }
+            if (cityPositions.TryGetValue(locName, out var cp))
+            {
+                cx = cp.x;
+                cy = cp.y;
+            }
+            double? ux = null, uy = null;
+            if (unitPositions.TryGetValue(locName, out var up))
+            {
+                ux = up.x;
+                uy = up.y;
+            }
+            var pops = popsLookup.TryGetValue(locName, out var po) ? po : null;
+            var hasMarket = marketLocations.Contains(locName);
 
             // Check if location exists — update metadata, preserve BorderRings
             int? existingLocId = null;
-            using (var cmd = new NpgsqlCommand(
-                "SELECT \"Id\" FROM locations WHERE \"ProvinceId\" = @provinceId AND \"Name\" = @name LIMIT 1", db, transaction))
+            using (
+                var cmd = new NpgsqlCommand(
+                    "SELECT \"Id\" FROM locations WHERE \"ProvinceId\" = @provinceId AND \"Name\" = @name LIMIT 1",
+                    db,
+                    transaction
+                )
+            )
             {
                 cmd.Parameters.AddWithValue("provinceId", provinceId);
                 cmd.Parameters.AddWithValue("name", locName);
                 var result = cmd.ExecuteScalar();
-                if (result != null) existingLocId = (int)result;
+                if (result != null)
+                    existingLocId = (int)result;
             }
 
             if (existingLocId.HasValue)
@@ -512,10 +702,15 @@ void UpsertProvincesAndLocations(
                 // Update metadata only — BorderRings untouched
                 using var cmd = new NpgsqlCommand(
                     "UPDATE locations SET "
-                    + "\"Color\" = @color, \"Topography\" = @topography, \"Climate\" = @climate, "
-                    + "\"Vegetation\" = @vegetation, \"RawMaterial\" = @rawMaterial, "
-                    + "\"Rank\" = @rank, \"CityX\" = @cityX, \"CityY\" = @cityY "
-                    + "WHERE \"Id\" = @id", db, transaction);
+                        + "\"Color\" = @color, \"Topography\" = @topography, \"Climate\" = @climate, "
+                        + "\"Vegetation\" = @vegetation, \"RawMaterial\" = @rawMaterial, "
+                        + "\"Rank\" = @rank, \"CityX\" = @cityX, \"CityY\" = @cityY, "
+                        + "\"UnitX\" = @unitX, \"UnitY\" = @unitY, "
+                        + "\"Pops\" = @pops::jsonb, \"HasMarket\" = @hasMarket "
+                        + "WHERE \"Id\" = @id",
+                    db,
+                    transaction
+                );
                 cmd.Parameters.AddWithValue("id", existingLocId.Value);
                 cmd.Parameters.AddWithValue("color", hex ?? "000000");
                 cmd.Parameters.AddWithValue("topography", tmpl?.Topography ?? "unknown");
@@ -525,17 +720,26 @@ void UpsertProvincesAndLocations(
                 cmd.Parameters.AddWithValue("rank", rank);
                 cmd.Parameters.AddWithValue("cityX", (object?)cx ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("cityY", (object?)cy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("unitX", (object?)ux ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("unitY", (object?)uy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("pops", (object?)pops ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("hasMarket", hasMarket);
                 cmd.ExecuteNonQuery();
             }
             else
             {
                 using var cmd = new NpgsqlCommand(
                     "INSERT INTO locations "
-                    + "(\"ProvinceId\",\"Name\",\"Color\",\"Topography\",\"Climate\",\"Vegetation\","
-                    + "\"RawMaterial\",\"Rank\",\"CityX\",\"CityY\",\"BorderRings\") "
-                    + "VALUES "
-                    + "(@provinceId,@name,@color,@topography,@climate,@vegetation,"
-                    + "@rawMaterial,@rank,@cityX,@cityY,'[]'::jsonb)", db, transaction);
+                        + "(\"ProvinceId\",\"Name\",\"Color\",\"Topography\",\"Climate\",\"Vegetation\","
+                        + "\"RawMaterial\",\"Rank\",\"CityX\",\"CityY\",\"UnitX\",\"UnitY\","
+                        + "\"Pops\",\"HasMarket\",\"BorderRings\") "
+                        + "VALUES "
+                        + "(@provinceId,@name,@color,@topography,@climate,@vegetation,"
+                        + "@rawMaterial,@rank,@cityX,@cityY,@unitX,@unitY,"
+                        + "@pops::jsonb,@hasMarket,'[]'::jsonb)",
+                    db,
+                    transaction
+                );
                 cmd.Parameters.AddWithValue("provinceId", provinceId);
                 cmd.Parameters.AddWithValue("name", locName);
                 cmd.Parameters.AddWithValue("color", hex ?? "000000");
@@ -546,6 +750,10 @@ void UpsertProvincesAndLocations(
                 cmd.Parameters.AddWithValue("rank", rank);
                 cmd.Parameters.AddWithValue("cityX", (object?)cx ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("cityY", (object?)cy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("unitX", (object?)ux ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("unitY", (object?)uy ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("pops", (object?)pops ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("hasMarket", hasMarket);
                 cmd.ExecuteNonQuery();
             }
         }
